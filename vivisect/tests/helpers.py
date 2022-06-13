@@ -4,6 +4,8 @@ import functools
 
 import vivisect.cli as v_cli
 
+import gc
+gc.set_threshold(500, 8, 8)
 
 class MockVw(object):
     def __init__(self, *args, **kwargs):
@@ -49,6 +51,7 @@ def getTestWorkspace(*paths):
     testdir = os.path.abspath(testdir)
     fpath = os.path.join(testdir, *paths)
     vw = v_cli.VivCli()
+    vw.config.viv.analysis.symswitchcase.timeout_secs = 30
     vw.loadFromFile(fpath)
     vw.analyze()
     return vw
