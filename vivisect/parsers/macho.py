@@ -2,6 +2,7 @@ import logging
 
 import envi.common as e_common
 
+from vivisect.const import archcalls
 import vivisect.parsers as viv_parsers
 
 import vstruct.defs.macho as vs_macho

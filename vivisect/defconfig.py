@@ -26,10 +26,16 @@ defconfig = {
             },
             'ihex':{
                 'arch':'',
+                'bigend':False,
                 'offset':0,
+            },
+            'vbf':{
+                'arch':'',
+                'bigend':False,
             },
             'srec':{
                 'arch':'',
+                'bigend':False,
                 'offset':0,
             },
         },
@@ -44,6 +50,11 @@ defconfig = {
                 'min_func_instr_size': 10,
                 'timeout_secs': 45,
             }
+        },
+        'arch':{
+            'ppc':{
+                'options':'spe'
+            },
         },
         'remote':{
             'wait_for_plat_arch': 10,
@@ -83,6 +94,7 @@ docconfig = {
             },
             'ihex':{
                 'arch':'What architecture is the ihex dump?',
+                'bigend':'Is the architecture Big-Endian (MSB)?',
             },
             'srec':{
                 'arch':'What architecture is the srec dump?',

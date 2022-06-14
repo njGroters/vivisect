@@ -23,6 +23,12 @@ ARCH_THUMB16     = 4 << 16
 ARCH_THUMB       = 5 << 16
 ARCH_MSP430      = 6 << 16
 ARCH_H8          = 7 << 16
+ARCH_PPC_E32     = 8 << 16
+ARCH_PPC_E64     = 9 << 16
+ARCH_PPC_S32     = 10 << 16
+ARCH_PPC_S64     = 11 << 16
+ARCH_PPCVLE      = 12 << 16
+ARCH_PPC_D       = 13 << 16
 ARCH_MASK        = 0xffff0000   # Masked into IF_FOO and BR_FOO values
 
 arch_names = {
@@ -34,20 +40,43 @@ arch_names = {
     ARCH_THUMB:     'thumb',
     ARCH_MSP430:    'msp430',
     ARCH_H8:        'h8',
+    ARCH_PPC_E32:   'ppc32-embedded',
+    ARCH_PPC_E64:   'ppc-embedded',
+    ARCH_PPC_S32:   'ppc32-server',
+    ARCH_PPC_S64:   'ppc-server',
+    ARCH_PPCVLE:    'ppc-vle',
+    ARCH_PPC_D:     'ppc-desktop',
 }
 
+# used by command line config
 arch_by_name = {
-    'default':  ARCH_DEFAULT,
-    'i386':     ARCH_I386,
-    'amd64':    ARCH_AMD64,
-    'arm':      ARCH_ARMV7,
-    'armv6l':   ARCH_ARMV7,
-    'armv7l':   ARCH_ARMV7,
-    'thumb16':  ARCH_THUMB16,
-    'thumb':    ARCH_THUMB,
-    'thumb2':   ARCH_THUMB,
-    'msp430':   ARCH_MSP430,
-    'h8':       ARCH_H8,
+    'default':      ARCH_DEFAULT,
+    'i386':         ARCH_I386,
+    'amd64':        ARCH_AMD64,
+    'arm':          ARCH_ARMV7,
+    'armv6l':       ARCH_ARMV7,
+    'armv7l':       ARCH_ARMV7,
+    'thumb16':      ARCH_THUMB16,
+    'thumb':        ARCH_THUMB,
+    'thumb2':       ARCH_THUMB,
+    'msp430':       ARCH_MSP430,
+    'h8':           ARCH_H8,
+    'ppc32':        ARCH_PPC_E32,
+    'ppc32-embedded': ARCH_PPC_E32,
+    'ppc':          ARCH_PPC_E64,
+    'ppc-embedded': ARCH_PPC_E64,
+    'ppc64-embedded': ARCH_PPC_E64,
+    'ppc-spe':      ARCH_PPC_E64,
+    'ppc-vle':      ARCH_PPCVLE,
+    'ppc32-vle':    ARCH_PPCVLE,
+    'ppcvle':       ARCH_PPCVLE,
+    'vle':          ARCH_PPCVLE,
+    'ppc32-server': ARCH_PPC_S32,
+    'ppc-server':   ARCH_PPC_S64,
+    'ppc64-server': ARCH_PPC_S64,
+    'altivec':      ARCH_PPC_S64,
+    'ppc-altivec':  ARCH_PPC_S64,
+    'ppc-desktop':  ARCH_PPC_D,
 }
 
 # Instruction flags (The first 8 bits are reserved for arch independant use)
@@ -164,7 +193,7 @@ class ArchitectureModule:
         '''
         regctx = self.archGetRegCtx()
         allr = [rname for rname in regctx.getRegisterNames()]
-        return [('all', allr)]
+        return {'all': allr}
 
     def archGetRegisterGroup(self, name):
         '''
@@ -548,6 +577,9 @@ class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
         # by finding all methods starting with i_ and assume they
         # implement an instruction by mnemonic
         self.op_methods = {}
+        self._populateOpMethods()
+
+    def _populateOpMethods(self):
         for name in dir(self):
             if name.startswith("i_"):
                 self.op_methods[name[2:]] = getattr(self, name)
@@ -830,7 +862,7 @@ class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
         Do the core of integer addition but only *return* the
         resulting value rather than assigning it.
 
-        Architectures shouldn't have to override this as operand order 
+        Architectures shouldn't have to override this as operand order
         doesn't matter
         """
         src = self.getOperValue(op, 0)
@@ -1306,7 +1338,7 @@ def getArchModule(name=None):
         import envi.archs.amd64 as e_amd64
         return e_amd64.Amd64Module()
 
-    elif name in ('arm', 'armv6l', 'armv7l'):
+    elif name in ('arm', 'armv6l', 'armv7l', 'armv7'):
         import envi.archs.arm as e_arm
         return e_arm.ArmModule()
 
@@ -1322,6 +1354,26 @@ def getArchModule(name=None):
         import envi.archs.h8 as e_h8
         return e_h8.H8Module()
 
+    elif name in ('ppc', 'ppc-embedded', 'ppc64-embedded', 'ppc-spe', 'ppcspe', 'spe', 'mpc56xx'):
+        import envi.archs.ppc as e_ppc
+        return e_ppc.Ppc64EmbeddedModule()
+
+    elif name in ('ppc32', 'ppc32-embedded', 'ppc32-spe'):
+        import envi.archs.ppc as e_ppc
+        return e_ppc.Ppc32EmbeddedModule()
+
+    elif name in ('ppc-server', 'ppc64-server', 'ppc-altivec', 'ppcaltivec', 'altivec'):
+        import envi.archs.ppc as e_ppc
+        return e_ppc.Ppc64ServerModule()
+
+    elif name in ('ppc32-server', 'ppc32-altivec'):
+        import envi.archs.ppc as e_ppc
+        return e_ppc.Ppc32ServerModule()
+
+    elif name in ('vle', 'ppc-vle', 'ppcvle', 'ppc32-vle'):
+        import envi.archs.ppc as e_ppc
+        return e_ppc.PpcVleModule()
+
     else:
         raise ArchNotImplemented(name)
 
@@ -1332,6 +1384,7 @@ def getArchModules(default=ARCH_DEFAULT):
     '''
     import envi.archs.h8 as e_h8
     import envi.archs.arm as e_arm
+    import envi.archs.ppc as e_ppc
     import envi.archs.i386 as e_i386
     import envi.archs.amd64 as e_amd64
     import envi.archs.thumb16 as e_thumb16
@@ -1347,6 +1400,12 @@ def getArchModules(default=ARCH_DEFAULT):
     archs.append(e_thumb16.ThumbModule())
     archs.append(e_msp430.Msp430Module())
     archs.append(e_h8.H8Module())
+    archs.append(e_ppc.Ppc32EmbeddedModule())
+    archs.append(e_ppc.Ppc64EmbeddedModule())
+    archs.append(e_ppc.Ppc32ServerModule())
+    archs.append(e_ppc.Ppc64ServerModule())
+    archs.append(e_ppc.PpcVleModule())
+    archs.append(e_ppc.PpcDesktopModule())
 
     # Set the default module ( or None )
     archs[ARCH_DEFAULT] = archs[default >> 16]

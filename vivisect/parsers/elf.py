@@ -204,7 +204,35 @@ arch_names = {
     Elf.EM_386: 'i386',
     Elf.EM_X86_64: 'amd64',
     Elf.EM_MSP430: 'msp430',
+    Elf.EM_PPCE: 'ppc32-embedded',
+    Elf.EM_PPC64E: 'ppc-embedded',
+    Elf.EM_PPC: 'ppc32-server',
+    Elf.EM_PPC64: 'ppc-server',
+    Elf.EM_ARM_AARCH64: 'aarch64',
 }
+
+ppc_arch_names = (
+    'ppc32-embedded',
+    'ppc-embedded',
+    'ppc32-server',
+    'ppc-server',
+)
+
+# FIXME: interpret ELF headers to configure VLE pages
+
+def getArchName(elf):
+    machine = elf.e_machine
+    if machine == Elf.EM_PPC64 and elf.e_flags & Elf.EF_PPC_EMB:
+        machine = Elf.EM_PPC64E
+    elif machine == Elf.EM_PPC and elf.e_flags & Elf.EF_PPC_EMB:
+        machine = Elf.EM_PPCE
+    arch = arch_names.get(machine)
+
+    if arch is None:
+       raise Exception("Unsupported Architecture: %d\n", elf.e_machine)
+
+    return arch
+
 
 archcalls = {
     'i386': 'cdecl',
@@ -212,6 +240,12 @@ archcalls = {
     'arm': 'armcall',
     'thumb': 'armcall',
     'thumb16': 'armcall',
+    'ppc32-embedded': 'ppccall',
+    'ppc-embedded': 'ppccall',
+    'ppc32-server': 'ppccall',
+    'ppc-server': 'ppccall',
+}
+
 }
 
 def getAddBaseAddr(elf, baseaddr=None):
@@ -291,6 +325,9 @@ def loadElfIntoWorkspace(vw, elf, filename=None, baseaddr=None):
     # Some ELF's require adding the baseaddr to most/all later addresses
     addbase, baseoff, baseaddr = getAddBaseAddr(elf, baseaddr)
 
+    # Keep track of if a LOAD happens for file offset 0
+    elfHdrAtOffset0 = False
+
     elf.fd.seek(0)
     md5hash = v_parsers.md5Bytes(byts)
     sha256 = v_parsers.sha256Bytes(byts)
@@ -339,7 +376,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, baseaddr=None):
 
     # since getFileByVa is based on segments, and ELF Sections seldom cover all the
     # loadable memory space.... we'll add PT_LOAD Program Headers, only at the
-    # end.  If we add them first, they're always the matching segments.  At the 
+    # end.  If we add them first, they're always the matching segments.  At the
     # end, they make more of a default segment
     pcount = 0
     if vw.getFileByVa(baseaddr) is None:
@@ -446,6 +483,36 @@ def loadElfIntoWorkspace(vw, elf, filename=None, baseaddr=None):
         elif sname == ".dynsym":
             [s for s in makeSymbolTable(vw, sva, sva+size)]
 
+        elif sname in (".bss",):
+            if vw.getName(fname + '.bss_temp') is None:
+                sdasz = sec.sh_size
+                align = sec.sh_addralign
+                sdasz += align-1
+                sdasz = (sdasz // align) * align
+                sdabase = vw.addMemoryMap(None, 7, fname, b'\0' * sdasz)
+                vw.addSegment(sdabase, sdasz, '.bss_temp', fname)
+                vw.makeName(sdabase, fname + ".bss_temp")
+
+        elif sname in (".sbss", ".sdata"):
+            if vw.getName('_SDA_BASE_') is None:
+                sdasz = sec.sh_size
+                align = sec.sh_addralign
+                sdasz += align-1
+                sdasz = (sdasz // align) * align
+                sdabase = vw.addMemoryMap(None, 7, fname, b'\0' * sdasz)
+                vw.addSegment(sdabase, sdasz, '.sda_base', fname)
+                vw.makeName(sdabase, "_SDA_BASE_")
+
+        elif sname in (".sbss2", ".sdata2"):
+            if vw.getName('_SDA2_BASE_') is None:
+                sdasz = sec.sh_size
+                align = sec.sh_addralign
+                sda2sz += align-1
+                sda2sz = (sda2sz // align) * align
+                sda2base = vw.addMemoryMap(None, 7, fname, b'\0' * sda2sz)
+                vw.addSegment(sdabase, sdasz, '.sda2_base', fname)
+                vw.makeName(sda2base, "_SDA2_BASE_")
+
         # If the section is really a string table, do it
         if sec.sh_type == Elf.SHT_STRTAB:
             makeStringTable(vw, sva, sva+size)
@@ -461,6 +528,48 @@ def loadElfIntoWorkspace(vw, elf, filename=None, baseaddr=None):
 
         if sec.sh_flags & Elf.SHF_STRINGS:
             makeStringTable(vw, sva, sva+size)
+
+    # Now that the program and section headers have been parsed, if this is a
+    # PowerPC 32-bit ELF we need to check for VLE flags
+    if arch in ppc_arch_names:
+        maps = vw.getMeta('PpcVleMaps')
+        if maps is None:
+            maps = []
+
+        # Loop through each loaded program header and if the load section is
+        # marked as VLE, or it maps back to a section that is marked as VLE,
+        # then track it
+        vle_flags = []
+        secs = elf.getSections()
+        for phdr in elf.getPheaders():
+            # Find any loadable and executable sections and keep track if they
+            # are VLE or not.
+            if phdr.p_type == Elf.PT_LOAD and phdr.p_flags & Elf.PF_X:
+                vle = phdr.p_flags & Elf.PF_PPC_VLE
+                vle_flags.append(vle)
+
+                # If this is a VLE page add it to the maps
+                if vle:
+                    maps.append((phdr.p_vaddr, phdr.p_align))
+
+        # Update the VLE maps
+        logger.info("Adding PowerPC VLE maps %s" % maps)
+        vw.setMeta('PpcVleMaps', maps)
+
+        # If all of the loaded and executable sections are VLE, then change this
+        # to be ppc-vle, if only some are ensure it is ppc32-embedded, otherwise
+        # leave it unchanged.
+        if all(vle_flags):
+            new_arch = 'ppc-vle'
+            logger.info("Updating arch from %s to %s" % (arch, new_arch))
+            vw.setMeta('Architecture', new_arch)
+            arch = new_arch
+
+        elif any(vle_flags) and arch != 'ppc32-embedded':
+            new_arch = 'ppc32-embedded'
+            logger.info("Updating arch from %s to %s" % (arch, new_arch))
+            vw.setMeta('Architecture', new_arch)
+            arch = new_arch
 
     # get "Dynamics" based items, like NEEDED libraries (dependencies)
     elfmeta = {}
@@ -564,10 +673,10 @@ def loadElfIntoWorkspace(vw, elf, filename=None, baseaddr=None):
         sva = s.st_value
         dmglname = demangle(s.name)
 
-        logger.debug('symbol val: 0x%x\ttype: %r\tbind: %r\t name: %r', sva,
-                                                                        Elf.st_info_type.get(s.st_info, s.st_info),
-                                                                        Elf.st_info_bind.get(s.st_other, s.st_other),
-                                                                        s.name)
+
+        sym_type = Elf.st_info_type.get(s.getInfoType(), s.getInfoType())
+        sym_bind = Elf.st_info_bind.get(s.getInfoBind(), s.getInfoBind())
+        logger.debug('symbol val: 0x%x\ttype: %r\tbind: %r\t name: %r', sva, sym_type, sym_bind, s.name)
 
         symtype = s.getInfoType()
         if symtype == Elf.STT_FILE:
@@ -603,7 +712,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, baseaddr=None):
                     vw.makePointer(sva, follow=False)
                 else:
                     '''
-                    Most of this is replicated in makePointer with follow=True. We specifically don't use that, since that kicks off a bunch of other analysis that isn't safe to run yet (it blows up in fun ways), but we still want these locations made first, so that other analysis modules know to not monkey with these and so I can set sizes and what not. 
+                    Most of this is replicated in makePointer with follow=True. We specifically don't use that, since that kicks off a bunch of other analysis that isn't safe to run yet (it blows up in fun ways), but we still want these locations made first, so that other analysis modules know to not monkey with these and so I can set sizes and what not.
                     while ugly, this does cover a couple nice use cases like pointer tables/arrays of pointers being present.
                     '''
                     if not valu:
@@ -667,7 +776,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, baseaddr=None):
         vw.addExport(eentry, EXP_FUNCTION, '__entry', fname)
         new_functions.append(("ELF Entry", eentry))
 
-    if vw.isValidPointer(baseaddr):
+    if elfHdrAtOffset0 and vw.isValidPointer(baseaddr):
         sname = 'elf.Elf%d' % (vw.getPointerSize() * 8)
         vw.makeStructure(baseaddr, sname)
 
@@ -704,7 +813,6 @@ def applyRelocs(elf, vw, addbase=False, baseoff=0):
             logger.debug('relocs: 0x%x: %s (%s)', rlva, dmglname, name)
             if arch in ('i386', 'amd64'):
                 if name:
-                    #if dmglname == 
                     if rtype == Elf.R_X86_64_IRELATIVE:
                         # before making import, let's fix up the pointer as a BASEPTR Relocation
                         ptr = r.r_addend
@@ -764,7 +872,7 @@ def applyRelocs(elf, vw, addbase=False, baseoff=0):
 
 
             if arch in ('arm', 'thumb', 'thumb16'):
-                # ARM REL entries require an addend that could be stored as a 
+                # ARM REL entries require an addend that could be stored as a
                 # number or an instruction!
                 import envi.archs.arm.const as eaac
                 if r.vsHasField('addend'):
@@ -772,7 +880,7 @@ def applyRelocs(elf, vw, addbase=False, baseoff=0):
                     addend = r.addend
                 else:
                     # otherwise, we have to check the stored value for number or instruction
-                    # if it's an instruction, we have to use the immediate value and then 
+                    # if it's an instruction, we have to use the immediate value and then
                     # figure out if it's negative based on the instruction!
                     try:
                         temp = vw.readMemoryPtr(rlva)

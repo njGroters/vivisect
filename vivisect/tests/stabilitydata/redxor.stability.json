@@ -7355,6 +7355,10 @@
             "str_/lib64/ld-linux-_00400200"
         ],
         [
+            2400,
+            "redxor.bss_temp"
+        ],
+        [
             6331864,
             "*.__gmon_start___00609dd8"
         ],

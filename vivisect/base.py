@@ -458,6 +458,9 @@ class VivWorkspaceCore(viv_impapi.ImportApi):
         else:
             self.comments[va] = comment
 
+    def _handleENDIAN(self, einfo):
+        self._doSetEndian(einfo)
+
     def _handleADDFILE(self, einfo):
         normname, imagebase, md5sum = einfo
         self.filemeta[normname] = {"md5sum":md5sum,"imagebase":imagebase}
@@ -589,6 +592,7 @@ class VivWorkspaceCore(viv_impapi.ImportApi):
         self.ehand[VWE_SYMHINT]  = self._handleSYMHINT
         self.ehand[VWE_AUTOANALFIN] = self._handleAUTOANALFIN
         self.ehand[VWE_WRITEMEM] = self._handleWRITEMEM
+        self.ehand[VWE_ENDIAN] = self._handleENDIAN
 
         self.thand = [None for x in range(VTE_MAX)]
         self.thand[VTE_IAMLEADER] = self._handleIAMLEADER
@@ -672,6 +676,17 @@ class VivWorkspaceCore(viv_impapi.ImportApi):
     #def _loadImportApi(self, apidict):
         #self._imp_api.update( apidict )
 
+    def getEndian(self):
+        return self.bigend
+
+    def _doSetEndian(self, endian):
+        self.bigend = endian
+        for arch in self.imem_archs:
+            arch.setEndian(self.bigend)
+
+        if self.arch is not None:
+            self.arch.setEndian(self.bigend)
+
 
 #################################################################
 #
@@ -728,6 +743,19 @@ class VivWorkspaceCore(viv_impapi.ImportApi):
         self.vprint('Workspace was Saved to Server: %s' % wshost)
         self.vprint('(You must close this local copy and work from the server to stay in sync.)')
 
+    def _mcb_PpcVleMaps(self, name, maps):
+        ppc_archs = (
+            envi.ARCH_PPC_E32,
+            envi.ARCH_PPC_E64,
+            envi.ARCH_PPC_S32,
+            envi.ARCH_PPC_S64,
+            envi.ARCH_PPCVLE,
+            envi.ARCH_PPC_D,
+        )
+        for arch in ppc_archs:
+            arch_idx = arch >> 16
+            self.imem_archs[arch_idx].setVleMaps(maps)
+
     def _fmcb_Thunk(self, funcva, th, thunkname):
         # If the function being made a thunk is registered
         # in NoReturnApis, update codeflow...
@@ -748,7 +776,7 @@ def trackDynBranches(cfctx, op, vw, bflags, branches):
     '''
     track dynamic branches
     '''
-    # FIXME: do we want to filter anything out?  
+    # FIXME: do we want to filter anything out?
     #  jmp edx
     #  jmp dword [ebx + 68]
     #  call eax
@@ -758,6 +786,7 @@ def trackDynBranches(cfctx, op, vw, bflags, branches):
     if len(vw.getXrefsFrom(op.va)):
         return
 
+    logger.info("0x%x: Dynamic Branch found:  %s" % (op.va, op))
     vw.setVaSetRow('DynamicBranches', (op.va, repr(op), bflags))
 
 class VivCodeFlowContext(e_codeflow.CodeFlowContext):
