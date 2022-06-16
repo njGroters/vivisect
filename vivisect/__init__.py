@@ -1113,12 +1113,12 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
         '''
         # FIXME this does not detect Unicode...
 
-        offset, bytes = self.getByteDef(va)
-        maxlen = len(bytes) - offset
+        offset, bytez = self.getByteDef(va)
+        maxlen = len(bytez) - offset
         count = 0
         if maxlen < 2:
             return -1
-        charset = bytes[offset + 1]
+        charset = bytez[offset + 1]
         while count < maxlen:
             # If we hit another thing, then probably not.
             # Ignore when count==0 so detection can check something
@@ -1129,17 +1129,17 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
                     if loc[L_LTYPE] == LOC_UNI:
                         if loc[L_VA] == va:
                             return loc[L_SIZE]
-                        if bytes[offset+count] != 0:
+                        if bytez[offset+count] != 0:
                             # same thing as in the string case, a binary can ref into a string
                             # only part of the full string.
                             return count + loc[L_SIZE]
                         return loc[L_VA] - (va + count) + loc[L_SIZE]
                     return -1
 
-            c0 = bytes[offset+count]
-            if offset + count+1 >= len(bytes):
+            c0 = bytez[offset+count]
+            if offset + count+1 >= len(bytez):
                 return -1
-            c1 = bytes[offset+count+1]
+            c1 = bytez[offset+count+1]
 
             # If we find our null terminator after more
             # than 4 chars, we're probably a real string

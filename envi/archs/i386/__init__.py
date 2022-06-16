@@ -23,15 +23,13 @@ class i386Module(envi.ArchitectureModule):
 
     def archGetRegisterGroups(self):
         groups = envi.ArchitectureModule.archGetRegisterGroups(self)
-        general = ('general', ['eax', 'ebx', 'ecx', 'edx', 'esi', 'edi',
-                                'ebp', 'esp', 'eip', ], )
 
-        groups.append(general)
+        groups['general'] = ['eax', 'ebx', 'ecx', 'edx', 'esi', 'edi',
+                                'ebp', 'esp', 'eip', ]
 
         # compilers use the following regs to stick the module baseaddr in for 
         # switchcase code
-        switch_mapbase = ('switch_mapbase', [ 'edi', 'esi' ],)
-        groups.append(switch_mapbase)
+        groups['switch_mapbase'] = [ 'edi', 'esi' ]
         return groups
 
     def getPointerSize(self):

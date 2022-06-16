@@ -31,16 +31,14 @@ class Amd64Module(e_i386.i386Module):
 
     def archGetRegisterGroups(self):
         groups = envi.ArchitectureModule.archGetRegisterGroups(self)
-        general = ('general', ['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'rbp',
-                                'rsp', 'rip', 'r8', 'r9', 'r10', 'r11', 'r12',
-                                'r13', 'r14', 'r15'], )
 
-        groups.append(general)
+        groups['general'] = ['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'rbp',
+                                'rsp', 'rip', 'r8', 'r9', 'r10', 'r11', 'r12',
+                                'r13', 'r14', 'r15']
 
         # compilers use the following regs to stick the module baseaddr in for 
         # switchcase code
-        switch_mapbase = ('switch_mapbase', [ 'rdi','rsi', 'r8', 'r9', 'r10' ],)
-        groups.append(switch_mapbase)
+        groups['switch_mapbase'] = [ 'rdi','rsi', 'r8', 'r9', 'r10' ]
         return groups
 
     def getPointerSize(self):
