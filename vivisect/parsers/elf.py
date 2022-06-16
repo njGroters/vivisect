@@ -246,8 +246,6 @@ archcalls = {
     'ppc-server': 'ppccall',
 }
 
-}
-
 def getAddBaseAddr(elf, baseaddr=None):
     '''
     # NOTE: This is only for prelink'd so's and exe's.  Make something for old style so.
