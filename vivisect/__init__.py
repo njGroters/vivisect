@@ -395,7 +395,7 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
         '''
         return list(self.comments.items())
 
-    def addRelocation(self, va, rtype, data=None):
+    def addRelocation(self, va, rtype, data=None, size=None):
         """
         Add a relocation entry for tracking.
         Expects data to have whatever is necessary for the reloc type. eg. addend
@@ -409,7 +409,7 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
         imgbase = self.getFileMeta(fname, 'imagebase')
         offset = va - imgbase
 
-        self._fireEvent(VWE_ADDRELOC, (fname, offset, rtype, data))
+        self._fireEvent(VWE_ADDRELOC, (fname, offset, rtype, data, size))
         return self.getRelocation(va)
 
     def delRelocation(self, va, full=False):
@@ -2915,8 +2915,6 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
         # get baseaddr and size, then make sure we have a good baseaddr
         baseaddr, size = mod.getMemBaseAndSize(self, filename=filename, baseaddr=baseaddr)
         logger.debug('initial baseva: 0x%x  size: 0x%x', baseaddr, size)
-        if baseaddr == 0:
-            baseaddr = 0x300000
 
         baseaddr = self.findFreeMemoryBlock(size, baseaddr)
         logger.debug("loading %r (size: 0x%x) at 0x%x", filename, size, baseaddr)
