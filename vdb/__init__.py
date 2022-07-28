@@ -361,27 +361,29 @@ class Vdb(e_cli.EnviMutableCli, v_notif.Notifier, v_util.TraceManager):
     def getTrace(self):
         return self.trace
 
-    def newTrace(self):
+    def newTrace(self, **kwargs):
         """
         Generate a new trace for this vdb instance.  This fixes many of
         the new attach/exec data munging issues because tracer re-use is
         *very* sketchy...
+
+        **kwargs is handed into the new trace to handle any platform magic
         """
-        oldtrace = self.getTrace()
+        oldtrace = self.getTrace(**kwargs)
         if oldtrace.isRunning():
             oldtrace.sendBreak()
         if oldtrace.isAttached():
             oldtrace.detach()
 
-        self.trace = oldtrace.buildNewTrace()
+        self.trace = oldtrace.buildNewTrace(**kwargs)
         oldtrace.release()
 
         self.bpcmds = {}    # TODO: make these reusable from previous sessions
         self.manageTrace(self.trace)
 
         # must be set for each trace
-        self.setBreakOnLibraryLoad(self.config.vdb.BreakOnLibraryLoad)
-        self.setBreakOnLibraryInit(self.config.vdb.BreakOnLibraryInit)
+        self.trace.setBreakOnLibraryLoad(self.config.vdb.BreakOnLibraryLoad)
+        self.trace.setBreakOnLibraryInit(self.config.vdb.BreakOnLibraryInit)
         return self.trace
 
     def setupSignalLookups(self):
