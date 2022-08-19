@@ -48,19 +48,6 @@ end, names are applied as appropriate.
 # TODO: regrange description of Symbolik Variables... normalize so "eax" and "eax+4" make sense.
 
 
-class SymIdxNotFoundException(Exception):
-    def __repr__(self):
-        return "getSymIdx cannot determine the Index register"
-
-class NoComplexSymIdxException(Exception):
-    def __init__(self, sc=None):
-        self.sc = sc
-        Exception.__init__(self)
-
-    def __repr__(self):
-        return "getComplexIdx cannot determine the Index register"
-
-
 class TrackingSymbolikEmulator(vs_anal.SymbolikFunctionEmulator):
     '''
     TrackingSymbolikEmulator has two modifications from a standard SymbolikEmulator:
@@ -70,7 +57,7 @@ class TrackingSymbolikEmulator(vs_anal.SymbolikFunctionEmulator):
     * If a read is from a real memory map, return that memory.
     
     These are both very useful for analyzing switchcases, to determine where in 
-    memory a 
+    memory a read occurs and the data comes from.
     '''
     def __init__(self, vw):
         vs_anal.SymbolikFunctionEmulator.__init__(self, vw)
@@ -97,7 +84,6 @@ class TrackingSymbolikEmulator(vs_anal.SymbolikFunctionEmulator):
 
     def setupFunctionCall(self, fva, args=None):
         logger.info("setupFunctionCall: SKIPPING!")
-        pass
         
     def readSymMemory(self, symaddr, symsize, vals=None):
         '''
@@ -175,11 +161,11 @@ def contains(symobj, subobj):
 
     ctx = {'compare':   subobj.solve(),
            'contains':  False,
-           'path':      []
+           'path':      ()
            }
 
     symobj.walkTree(_cb_contains, ctx)
-    return ctx.get('contains'), ctx['path']
+    return ctx['contains'], ctx['path']
 
 def getUnknowns(symvar):
     '''
@@ -200,7 +186,6 @@ def getUnknowns(symvar):
             memlist = ctx.get(SYMT_MEM)
             if symobj not in memlist:
                 memlist.append(symobj)
-            #import envi.interactive as ei; ei.dbg_interact(locals(), globals())
 
     unks = {SYMT_VAR:[], SYMT_MEM:[]}
     symvar.walkTree(_cb_grab_vars_n_mems, unks)
@@ -366,22 +351,18 @@ class SwitchCase:
         self.vw = vw
         self.jmpva = jmpva
         self.timeout = timeout
-        self.op = vw.parseOpcode(jmpva)
-        logger.info('=== 0x%x: %r ===' % (jmpva, self.op))
+        self.jmpop = vw.parseOpcode(jmpva)
+        logger.info('=== analyzing SwitchCase branch at 0x%x: %r ===' % (jmpva, self.jmpop))
 
         self.sctx = vs_anal.getSymbolikAnalysisContext(vw)
         self.xlate = self.sctx.getTranslator()
 
         # 32-bit i386 thunk_reg handling.  this should be the only oddity for this architecture
-        if 'thunk_reg' in vw.getVaSetNames():
-            try:
-                for tva, regname, tgtval in vw.getVaSetRows('thunk_reg'):
-                    fname = vw.getName(tva, True)
-                    trobj = ThunkReg(regname, tgtval)
-                    self.sctx.addSymFuncCallback(fname, trobj.thunk_reg)
-                    logger.debug( "sctx.addSymFuncCallback(%s, thunk_reg)" % fname)
-            except v_exc.InvalidVaSet:
-                pass
+        for tva, regname, tgtval in vw.getVaSetRows('thunk_reg'):
+            fname = vw.getName(tva, True)
+            trobj = ThunkReg(regname, tgtval)
+            self.sctx.addSymFuncCallback(fname, trobj.thunk_reg)
+            logger.debug( "sctx.addSymFuncCallback(%s, thunk_reg)" % fname)
 
 
         self._sgraph = None
@@ -431,6 +412,8 @@ class SwitchCase:
         '''
         self.makeSwitch()
 
+    
+    
     #### primitives for switchcase analysis ####
     def getJmpSymVar(self):
         '''
@@ -440,13 +423,10 @@ class SwitchCase:
         if self.jmpsymvar is not None:
             return self.jmpsymvar
 
-        op = self.vw.parseOpcode(self.jmpva)
-
-        # TODO: this is not always the right operand for all architectures.  improve
-        self.jmpsymvar = self.xlate.getOperObj(op, 0)
+        self.jmpsymvar = self.xlate.getOperObj(self.jmpop, 0)
         return self.jmpsymvar
 
-    def getSymTarget(self, short=True):
+    def getSymTarget(self):
         '''
         Returns the Symbolik state of the dynamic target of the branch/jmp
         short indicates just in the context of the last codeblock.
@@ -455,7 +435,7 @@ class SwitchCase:
         jmpsymvar = self.getJmpSymVar()
 
         cspath, aspath, fullpath = self.getSymbolikParts()
-        emu = (cspath[0], aspath[0])[short]
+        emu = aspath[0]
         tgtsym = jmpsymvar.update(emu)
         return tgtsym
 
@@ -463,41 +443,27 @@ class SwitchCase:
     def getSymIdx(self):
         '''
         returns the symbolik index register, and the type of object
+        returns first one found, first checking SYMT_VAR's and only 
+        then looking at SYMT_MEM symbolic indexes
         '''
         symtgt = self.getSymTarget()
         unks = getUnknowns(symtgt)
 
         cspath, aspath, fullpath = self.getSymbolikParts()
 
-        potentials = []
-
         for unk in unks.get(SYMT_VAR):
             unkvar = cspath[0].getSymVariable(unk)
             if unkvar.isDiscrete():
                 continue
-            potentials.append((SYMT_VAR, unk))
+            return (SYMT_VAR, unk)
 
         for unk in unks.get(SYMT_MEM):
             unkvar = cspath[0].getSymVariable(unk)
             if unkvar.isDiscrete():
                 continue
-            potentials.append((SYMT_MEM, unk))
+            return (SYMT_MEM, unk)
 
-        if not len(potentials):
-            raise SymIdxNotFoundException(cspath, aspath)
-            
-        return potentials[0]
-
-    def getCountOffset(self):
-        '''
-        Limited value function.
-        '''
-        lower, upper, offset = self.getBounds()
-        if None in (lower, upper): 
-            logger.info("something odd in count/offset calculation... skipping 0x%x...", self.jmpva)
-            return
-        return (upper-lower+1), offset+lower
-
+        raise v_exc.SymIdxNotFoundException(cspath, aspath)
 
     def getConstraints(self):
         '''
@@ -529,7 +495,7 @@ class SwitchCase:
         fva = vw.getFunction(jmpva)
         cb = vw.getCodeBlock(jmpva)
         if cb is None:
-            raise Exception("Dynamic Branch is not currently part of a CodeBlock!")
+            raise v_exc.InvalidCodeBlock("Dynamic Branch is not currently part of a CodeBlock!")
         cbva, cbsz, cbfva = cb
 
         if self._sgraph is None:
@@ -592,7 +558,11 @@ class SwitchCase:
 
     def getComplexIdx(self):
         '''
-        FILL ME
+        Complex Index is the Applied Symboliks state (of the context-path) for
+        the simple index returned by getSymIdx()
+
+        eg.  if the simple symbolik index is `Var('edx', 4)` but the
+            complex could be `Arg(2, 4)` or something similar
         '''
         symtype, smplIdx = self.getSymIdx()
 
@@ -606,6 +576,8 @@ class SwitchCase:
 
         return cplxIdx
 
+
+    
     #### mid-level functionality ####
     def getBaseSymIdx(self):
         '''
@@ -638,7 +610,7 @@ class SwitchCase:
 
         idx = self.getComplexIdx()
         if idx is None:
-            raise NoComplexSymIdxException(self)
+            raise v_exc.NoComplexSymIdxException(self)
 
         idx.reduce()
 
@@ -721,7 +693,7 @@ class SwitchCase:
                 continue
 
             if not contains(symvar, baseIdx):
-                logger.debug("Constraint not based on Index: %r" % cons)
+                logger.debug("Ignoring Constraint not based on Index: %r" % cons)
                 continue
 
             if cons.symtype == SYMT_CON_LT and symcmp.solve() == 0:
@@ -731,11 +703,10 @@ class SwitchCase:
             conthing, consoff = peelIdxOffset(symvar)
 
             if conthing != baseIdx:
-                logging.info("FAIL: %r  != %r" % (conthing, baseIdx))
-                #raw_input("FAIL: %r  != %r" % (conthing, baseIdx))
+                logger.debug("Constraint not bound-limiting for our index: %r  != %r" % (conthing, baseIdx))
                 continue
 
-            logger.debug("GOOD: %r\n\t%r\n\t%r\t%r + %r" % (cons, symvar, conthing, consoff, symcmp))
+            logger.debug("Valid bound-limiting Constraint: %r\n\t%r\n\t%r\t%r + %r" % (cons, symvar, conthing, consoff, symcmp))
             retcons.append((con, cons.symtype, consoff+symcmp.solve()))
 
         return retcons
@@ -803,7 +774,7 @@ class SwitchCase:
                     else:
                         logger.info("Unhandled comparator:  %s\n", repr(cons))
 
-                logger.info("Done.. %r %r ...\n" % (lower, upper))
+                logger.info("Determined bounds: %r %r\n" % (lower, upper))
         except StopIteration:
             pass
 
@@ -852,7 +823,7 @@ class SwitchCase:
                 symaddr = eff.symaddr.update(emu=semu)
                 if symaddr.isDiscrete():
                     solution = symaddr.solve()
-                    logger.info("0x%x->0x%x" % (eff.va, solution))
+                    logger.info("analyzing ptr: 0x%x->0x%x" % (eff.va, solution))
 
                     if not self.vw.isValidPointer(solution):
                         logger.warning(("ARRRG: Non-pointer in ReadMemory???"))
@@ -889,8 +860,8 @@ class SwitchCase:
         start = time.time()
 
         # only support branching switch-cases (ie, not calls)
-        if not (self.op.iflags & envi.IF_BRANCH):
-            logger.info("makeSwitch: exiting: not a branch opcode: 0x%x: %r", self.op.va, self.op)
+        if not (self.jmpop.iflags & envi.IF_BRANCH):
+            logger.info("makeSwitch: exiting: not a branch opcode: 0x%x: %r", self.jmpop.va, self.jmpop)
             return
 
         # skip any that already have xrefs away from (already been discovered?)
@@ -906,7 +877,7 @@ class SwitchCase:
 
         # skip when the function is the first instruction (PLT?)
         if funcva == self.jmpva:
-            logger.info("function va IS jmpva 0x%x (PLT?)", self.jmpva)
+            logger.info("skipping: function va IS jmpva 0x%x (PLT?)", self.jmpva)
             return
 
         # skip if insufficient instructions in the function to have an interesting switchcase.
@@ -920,7 +891,7 @@ class SwitchCase:
         jnode, jemu, jaeffs = self.getSymbolikJmpBlock()
         jmptgt = self.getJmpSymVar()
         if not hasMul(jmptgt.update(jemu)):
-            logger.info("Skipping: JmpSymVar doesn't have multiplication! (0x%x)", self.jmpva)
+            logger.info("skipping: JmpSymVar doesn't have multiplication! (0x%x)", self.jmpva)
             return
 
 
@@ -1010,10 +981,10 @@ class SwitchCase:
         except StopIteration as e:
             logger.info("!@#$!@#$!@#$!@#$ BOMBED OUT (Couldn't Find Valid Path) 0x%x  !@#$!@#$!@#$!@#$\n%r", self.jmpva, e)
 
-        except SymIdxNotFoundException as e:
+        except v_exc.SymIdxNotFoundException as e:
             logger.info("!@#$!@#$!@#$!@#$ BOMBED OUT (SymIdx) 0x%x  !@#$!@#$!@#$!@#$ \n%r", self.jmpva, e)
 
-        except NoComplexSymIdxException as e:
+        except v_exc.NoComplexSymIdxException as e:
             logger.info("!@#$!@#$!@#$!@#$ BOMBED OUT (SymIdx=%r \t ComplexIdx=None) 0x%x  !@#$!@#$!@#$!@#$ \n%r", e.sc.getSymIdx(), self.jmpva, e)
 
         except PathForceQuitException as e:
@@ -1121,7 +1092,7 @@ def makeNames(vw, jmpva, cases, baseoff=0):
 
         curname = vw.getName(addr) 
         if curname is not None:
-            ## FIXME NOW!:   if already labeled, chances are good this is other cases in the same function.
+            ## TODO:   if already labeled, chances are good this is other cases in the same function.
             ## either simply add the new outstrings to the current one or we need to keep track of what
             ## calls each and with what switchcase/index info.  VaSet?  or do we want this to only expect
             ## the same function to call each one, and all part of the same Switchcase?
@@ -1297,35 +1268,4 @@ def analyzeJmp(vw, jmpva, timeout=None):
 
     sc = SwitchCase(vw, jmpva, timeout)
     sc.analyze()
-                
 
-def pathGenConvert(pathgen):
-    '''
-    this takes in a HierGraph path-generator and converts each path to the kind needed by Symboliks
-    '''
-    for path in pathgen:
-        newpath = []
-        prevedge = [ None ]
-        for node, nextedge in path:
-            newpath.append((node[0], prevedge[0]))
-            prevedge = nextedge
-
-        pprint(newpath)
-        yield newpath
-
-
-# for use as vivisect script
-if globals().get('vw'):
-    verbose = vw.verbose
-    vw.verbose = True
-
-    vw.vprint("Starting...")
-    jmpva = vw.parseExpression(argv[1])
-
-    sc = SwitchCase(vw, jmpva)
-    sc.analyze()
-
-    vw.vprint("Done")
-    
-    vw.verbose = verbose
-   

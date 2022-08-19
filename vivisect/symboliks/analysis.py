@@ -43,6 +43,7 @@ class SymbolikFunctionEmulator(vsym_emulator.SymbolikEmulator):
 
     def __init__(self, vw):
         vsym_emulator.SymbolikEmulator.__init__(self, vw)
+        self.__width__ = vw.getPointerSize()
         self.cconvs = {}
         self.cconv = None   # This will be set by setupFunctionCall
 
@@ -451,7 +452,7 @@ class SymbolikAnalysisContext:
         Differs from getSymbolikPaths() in that it stops at tova rather
         than continuing to a ret or loop path.
         '''
-        if graph == None:
+        if graph is None:
             graph = self.getSymbolikGraph(fva)
 
         tocb = self.vw.getCodeBlock(tova)

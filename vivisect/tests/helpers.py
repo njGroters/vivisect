@@ -4,8 +4,6 @@ import functools
 
 import vivisect.cli as v_cli
 
-import gc
-gc.set_threshold(500, 8, 8)
 
 class MockVw(object):
     def __init__(self, *args, **kwargs):
@@ -17,6 +15,9 @@ class MockVw(object):
 
     def getLocation(self, va):
         return self._locs.get(va, None)
+
+    def getPointerSize(self):
+        return self.psize
 
 
 def getTestBytes(*paths):
