@@ -686,13 +686,14 @@ def loadElfIntoWorkspace(vw, elf, filename=None, baseaddr=None):
                 if section:
                     sva += section.sh_addr
 
+        sym_type = Elf.st_info_type.get(s.getInfoType(), s.st_info)
+        sym_bind = Elf.st_info_bind.get(s.getInfoBind(), s.st_other)
+        
         dmglname = demangle(s.name)
         logger.debug('symbol val: 0x%x\ttype: %r\tbind: %r\t name: %r', sva,
-                                                                        Elf.st_info_type.get(s.getInfoType(), s.st_info),
-                                                                        Elf.st_info_bind.get(s.getInfoBind(), s.st_other),
-                                                                        s.name)
-
-        symtype = s.getInfoType()
+                                                                        sym_type,
+                                                                        sym_bind,
+        
         if symtype == Elf.STT_FILE:
             vw.setVaSetRow('FileSymbols', (dmglname, sva))
             continue
