@@ -282,8 +282,12 @@ class WorkspaceEmulator:
             elif self._func_only:
                 if ret is None:
                     ret = self.setVivTaint('apicall', (op, endeip, api, argv))
+                    
                 retn = self.getProgramCounter()
-                callconv.execCallReturn(self, ret, len(funcargs))
+                
+                apiRetVoid = (ret == None) and (callname != None) \
+                             and (rtype == 'void')
+                callconv.execCallReturn(self, ret, len(funcargs), apiRetVoid)
                 newaddr = self.getProgramCounter()
                 # So....sometimes, mostly when we're called into an emulator via isProbablyCode, we don't
                 # get the initial function setups, which include a couple pushes onto the stack. Normally,
