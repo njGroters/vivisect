@@ -12,6 +12,11 @@ class i386Module(envi.ArchitectureModule):
         envi.ArchitectureModule.__init__(self, 'i386')
         self._arch_dis = i386Disasm()
 
+    def initRegGroups(self):
+        envi.ArchitectureModule.initRegGroups(self)
+        self._regGrps.update({'general': ['eax', 'ecx', 'edx', 'ebx', 'esi', 'edi',
+                                'ebp', 'esp', 'eip'] })
+
     def archGetRegCtx(self):
         return i386RegisterContext()
 
@@ -20,17 +25,6 @@ class i386Module(envi.ArchitectureModule):
 
     def archGetNopInstr(self):
         return b'\x90'
-
-    def archGetRegisterGroups(self):
-        groups = envi.ArchitectureModule.archGetRegisterGroups(self)
-
-        groups['general'] = ['eax', 'ebx', 'ecx', 'edx', 'esi', 'edi',
-                                'ebp', 'esp', 'eip', ]
-
-        # compilers use the following regs to stick the module baseaddr in for 
-        # switchcase code
-        groups['switch_mapbase'] = [ 'edi', 'esi' ]
-        return groups
 
     def getPointerSize(self):
         return 4
@@ -43,9 +37,6 @@ class i386Module(envi.ArchitectureModule):
 
     def getEmulator(self):
         return IntelEmulator()
-
-    def archGetValidSwitchcaseOperand(self):
-        return (i386RegOper, i386RegMemOper)
 
 # NOTE: This one must be after the definition of i386Module
 from envi.archs.i386.emu import *
