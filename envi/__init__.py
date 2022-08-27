@@ -212,6 +212,16 @@ class ArchitectureModule:
         '''
         raise ArchNotImplemented("archGetValidSwitchcaseOperands")
 
+    def archGetRegisterGroup(self, name):
+        '''
+        Returns a tuple of registers for a named register group.  Returns
+        None if requested name does not exist
+        '''
+        reg_groups = self.archGetRegisterGroups()
+        for gname, group in reg_groups:
+            if name == gname:
+                return group
+
     def archModifyFuncAddr(self, va, info):
         '''
         Can modify the VA and context based on architecture-specific info.
