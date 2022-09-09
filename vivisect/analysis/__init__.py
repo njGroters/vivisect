@@ -58,7 +58,6 @@ def addAnalysisModules(vw):
             vw.addAnalysisModule("vivisect.analysis.amd64.golang")
 
         vw.addFuncAnalysisModule("vivisect.analysis.generic.codeblocks")
-        #vw.addFuncAnalysisModule("vivisect.analysis.generic.switchcase")   # it's not that kind of analysis module.  hook dyn branches with analyzeJmp().  besides, it belongs in vivisect.analysis.ms
         vw.addFuncAnalysisModule("vivisect.analysis.generic.impapi")
         vw.addFuncAnalysisModule("vivisect.analysis.ms.hotpatch")
         vw.addFuncAnalysisModule("vivisect.analysis.ms.msvc")
@@ -136,6 +135,7 @@ def addAnalysisModules(vw):
 
         elif arch in PPC_ARCHS:
             vw.addFuncAnalysisModule("vivisect.analysis.ppc.emulation")
+
         # we want emulation to have completed so we know what the Args look like
         vw.addFuncAnalysisModule("vivisect.analysis.generic.symswitchcase")
 
@@ -257,6 +257,11 @@ def addAnalysisModules(vw):
             vw.addFuncAnalysisModule("vivisect.analysis.arm.emulation")
             vw.addFuncAnalysisModule('vivisect.analysis.arm.renaming')
 
+        if arch in ARM_ARCHS:
+            vw.addFuncAnalysisModule("vivisect.analysis.arm.emulation")
+            vw.addFuncAnalysisModule('vivisect.analysis.arm.renaming')
+
+        vw.addFuncAnalysisModule("vivisect.analysis.generic.symswitchcase")
         vw.addFuncAnalysisModule("vivisect.analysis.generic.thunks")
 
     else:
