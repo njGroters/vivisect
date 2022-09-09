@@ -57,6 +57,7 @@ def getTestWorkspace(*paths, vw=None):
         vw = v_cli.VivCli()
         vw.config.viv.analysis.symswitchcase.timeout_secs = 30
 
+
     vw.loadFromFile(fpath)
     vw.analyze()
     return vw
@@ -72,6 +73,7 @@ def getTestWorkspace_nocache(*paths, vw=None):
     if not vw:
         vw = v_cli.VivCli()
         vw.config.viv.analysis.symswitchcase.timeout_secs = 30
+
 
     vw.loadFromFile(fpath)
     vw.analyze()
