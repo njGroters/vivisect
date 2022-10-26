@@ -3,6 +3,7 @@ The Envi framework allows architecture abstraction through the use of the
 ArchitectureModule, Opcode, Operand, and Emulator objects.
 '''
 
+import copy
 import types
 import struct
 import logging
@@ -210,14 +211,14 @@ class ArchitectureModule:
         Example:
             { 'all': ['eax', 'ebx', ...], ...}
         '''
-        return dict(self._regGrps)
+        return copy.deepcopy(self._regGrps)
 
     def archGetRegisterGroup(self, name):
         '''
         Returns a tuple of registers for a named register group.  Returns
         None if requested name does not exist
         '''
-        return self._regGrps.get(name)
+        return copy.deepcopy(self._regGrps.get(name))
 
     def archModifyFuncAddr(self, va, info):
         '''
