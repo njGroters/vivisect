@@ -1711,24 +1711,63 @@ class Vdb(e_cli.EnviMutableCli, v_notif.Notifier, v_util.TraceManager):
 
     def do_bpedit(self, line):
         """
-        Manipulcate the python code that will be run for a given
-        breakpoint by ID.  (Also the way to view the code).
+        Modify a given breakpoint.
+        * Manipulate the python code that will be run for a given
+          breakpoint by ID.
+        * Also the way to view the code
+        * Modify characteristics of the breakpoint (eg. FastBreak)
 
-        Usage: bpedit <id> ["optionally new code"]
+        Usage: bpedit <id> [options]["optionally new code"]
+
+        where:
+           -F  toggles a breakpoint's FastBreak mode
+           -V  prints more metadata about a given breakpoint (default is just the code)
 
         NOTE: Your code must be surrounded by "s and may not
         contain any "s
         """
         argv = e_cli.splitargs(line)
+        verbose = False
+        try:
+            opts, args = getopt(argv, 'FV')
+        except:
+            return self.do_help('bpedit')
+
         if len(argv) == 0:
             return self.do_help("bpedit")
-        bpid = int(argv[0])
 
-        if len(argv) == 2:
+        bpid = int(optarg[0])
+
+        for opt, optarg in opts:
+            if opt == '-V':
+                # print all the metadata
+                verbose = True
+
+            elfif opt == '-F':
+                self.trace.
+
+        if len(optarg) == 2:
             self.trace.setBreakpointCode(bpid, argv[1])
 
+        # print the breakpoint metadata:
+        bp = self.trace.getBreakpoint(bpid)
+        if bp is None:
+            self.vprint("Breakpoint %d does not exist!" % bpid)
+            return
+
         pystr = self.trace.getBreakpointCode(bpid)
-        self.vprint("[%d] Breakpoint code: %s" % (bpid,pystr))
+        if verbose:
+            self.vprint("[%d] %r" % bp)
+            self.vprint("    code: %s" % (pystr))
+            self.vprint("    FastBreak:     %r" % bp.fastbreak)
+            self.vprint("    resonce:       %r" % bp.resonce)
+            self.vprint("    active:        %r" % bp.active)
+            self.vprint("    enabled:       %r" % bp.enabled)
+            self.vprint("    silent:        %r" % bp.silent)
+            self.vprint("    untouchable:   %r" % bp.untouchable)
+
+        else:
+            self.vprint("[%d] Breakpoint code: %s" % (bpid,pystr))
 
     def do_bp(self, line):
         """
