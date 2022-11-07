@@ -187,7 +187,12 @@ class VivCli(e_cli.EnviCli, vivisect.VivWorkspace):
                 ftup = self.getFileAndOffset(va)
                 if ftup:
                     fname, fbase, off = ftup
-                    self.vprint('0x%.8x: %s  (%r + 0x%x)' % (va, name, fname, off))
+
+                    self.canvas.addVaText(hex(va), va)
+                    self.canvas.addText(" %s  (" % name)
+                    self.canvas.addVaText(fname, fbase)
+                    self.canvas.addText(" + 0x%x)\n" % off)
+                    #self.vprint('0x%.8x: %s  (%r + 0x%x)' % (va, name, fname, off))
                 else:
                     self.vprint("WARNING: 0x%x: %r  doesn't exist in a file!" % (va, name))
 
@@ -256,6 +261,7 @@ class VivCli(e_cli.EnviCli, vivisect.VivWorkspace):
         parser.add_option('-t', action='store_true', dest='searchText')
         parser.add_option('-M', action='store', dest='markColor', default='orange')
         parser.add_option('-R', action='store_true', dest='is_regex')
+        # TODO:   Make Address output rt-clickable
 
         argv = shlex.split(line)
         try:
