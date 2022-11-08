@@ -1753,7 +1753,7 @@ class Vdb(e_cli.EnviMutableCli, v_notif.Notifier, v_util.TraceManager):
                 bp = self.trace.getBreakpoint(bpid)
 
         if len(args) == 2:
-            self.trace.setBreakpointCode(bpid, argv[1])
+            self.trace.setBreakpointCode(bpid, args[1])
 
         # print the breakpoint metadata:
         pystr = self.trace.getBreakpointCode(bpid)
