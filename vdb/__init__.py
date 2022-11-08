@@ -1738,23 +1738,24 @@ class Vdb(e_cli.EnviMutableCli, v_notif.Notifier, v_util.TraceManager):
 
         bpid = int(optarg[0])
 
-        for opt, optarg in opts:
-            if opt == '-V':
-                # print all the metadata
-                verbose = True
-
-            elfif opt == '-F':
-                self.trace.
-
-        if len(optarg) == 2:
-            self.trace.setBreakpointCode(bpid, argv[1])
-
-        # print the breakpoint metadata:
         bp = self.trace.getBreakpoint(bpid)
         if bp is None:
             self.vprint("Breakpoint %d does not exist!" % bpid)
             return
 
+        for opt, optarg in opts:
+            if opt == '-V':
+                # print all the metadata
+                verbose = True
+
+            elif opt == '-F':
+                bp.fastbreak = not bp.fastbreak
+                bp = self.trace.getBreakpoint(bpid)
+
+        if len(optarg) == 2:
+            self.trace.setBreakpointCode(bpid, argv[1])
+
+        # print the breakpoint metadata:
         pystr = self.trace.getBreakpointCode(bpid)
         if verbose:
             self.vprint("[%d] %r" % bp)
