@@ -1747,7 +1747,7 @@ class Vdb(e_cli.EnviMutableCli, v_notif.Notifier, v_util.TraceManager):
         if len(argv) == 0:
             return self.do_help("bpedit")
 
-        bpid = int(optarg[0])
+        bpid = int(args[0])
 
         bp = self.trace.getBreakpoint(bpid)
         if bp is None:
@@ -1763,20 +1763,20 @@ class Vdb(e_cli.EnviMutableCli, v_notif.Notifier, v_util.TraceManager):
                 bp.fastbreak = not bp.fastbreak
                 bp = self.trace.getBreakpoint(bpid)
 
-        if len(optarg) == 2:
+        if len(args) == 2:
             self.trace.setBreakpointCode(bpid, argv[1])
 
         # print the breakpoint metadata:
         pystr = self.trace.getBreakpointCode(bpid)
         if verbose:
-            self.vprint("[%d] %r" % bp)
+            self.vprint("%r" % bp)
             self.vprint("    code: %s" % (pystr))
             self.vprint("    FastBreak:     %r" % bp.fastbreak)
             self.vprint("    resonce:       %r" % bp.resonce)
             self.vprint("    active:        %r" % bp.active)
             self.vprint("    enabled:       %r" % bp.enabled)
-            self.vprint("    silent:        %r" % bp.silent)
-            self.vprint("    untouchable:   %r" % bp.untouchable)
+            #self.vprint("    silent:        %r" % bp.silent)
+            #self.vprint("    untouchable:   %r" % bp.untouchable)
 
         else:
             self.vprint("[%d] Breakpoint code: %s" % (bpid,pystr))
