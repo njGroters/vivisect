@@ -5,6 +5,7 @@ import tempfile
 import unittest
 
 import envi
+import envi.exc as e_exc
 import envi.const as e_const
 import envi.memcanvas as e_mcanvas
 
@@ -1610,3 +1611,27 @@ class VivisectTest(v_t_utils.VivTest):
 
         # since it's assigned, the result from "vw.getVivGuid()" should be the same
         self.assertEqual(newguid, vw.getVivGuid())
+
+    def test_write_fail(self):
+        with self.snap(self.chown_vw) as vw:
+            base = vw.getFilee_constMeta('chown', 'imagebase')
+
+            oldmem = vw.readMemory(base, 10)
+
+            with self.assertRaises(e_exc.SegmentationViolation):
+                vw.writeMemory(base, b"testing...")
+
+            self.assertEqual(oldmem, vw.readMemory(base, 10))
+
+            with vw.getAdminRights():
+                vw.writeMemory(base, b"testing...")
+
+            self.assertEqual(b'testing...', vw.readMemory(base, 10))
+
+            with self.assertRaises(e_exc.SegmentationViolation):
+                vw.writeMemory(base, b"FOOBARBAZ.")
+
+            self.assertEqual(b'testing...', vw.readMemory(base, 10))
+
+            with vw.getAdminRights():
+                vw.writeMemory(base, oldmem)

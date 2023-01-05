@@ -2,12 +2,12 @@
 Connect any Exports we have to Imports we may also have 
 (most useful for multiple file workspaces)
 '''
-
 import logging
 logger = logging.getLogger(__name__)
 
+from vivisect import LOC_OP, REF_CODE
 
-def connectImportsWithExports(vw):
+def analyze(vw):
     """
     Look for any "imported" symbols that are satisfied by current exports.
     Wire up the connection.
@@ -59,6 +59,3 @@ def connectImportsWithExports(vw):
                     vw.addXref(lva, eva, REF_CODE)
                     logger.debug("addXref(0x%x -> 0x%x)", lva, eva)
 
-
-def analyze(vw):
-    connectImportsWithExports(vw)

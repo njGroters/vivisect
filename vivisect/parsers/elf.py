@@ -56,16 +56,16 @@ def getMemBaseAndSize(vw, elf, baseaddr=None):
 
     for mapva, mperms, mname, mbytes, malign in memmaps:
         if mapva < baseaddr:
-            baseaddr = mapva
+            baseaddr = mapva & -e_const.PAGE_SIZE   # align to page-size
         endva = mapva + len(mbytes)
         if endva > topmem:
             topmem = endva
 
     size = topmem - baseaddr
 
-    if baseaddr == 0:
-        baseaddr = vw.config.viv.parsers.elf.baseoffset
-
+    if baseaddr == 0 and not elf.isRelocatable():
+        baseaddr = vw.config.viv.parsers.elf.baseaddr
+        
     if savebase:
         # if we provided a baseaddr, override what the file wants
         baseaddr = savebase
@@ -98,11 +98,12 @@ def getMemoryMapInfo(elf, fname=None, baseaddr=None):
             logger.info('Skipping: %s', pgm)
 
     if len(pgms) == 0:
+        # NOTE: among other file types, Linux Kernel modules have no program headers
         secs = elf.getSections()
         # fall back to loading sections as best we can...
         logger.info('elf: no program headers found! (in %r)', fname)
 
-        maps = [ [s.sh_offset,s.sh_size] for s in secs if s.sh_offset and s.sh_size ]
+        maps = [ [s.sh_offset,s.sh_size,s.sh_addralign] for s in secs if s.sh_offset and s.sh_size ]
         maps.sort()
 
         merged = []
@@ -114,10 +115,9 @@ def getMemoryMapInfo(elf, fname=None, baseaddr=None):
 
             merged.append( maps[i] )
 
-        baseaddr = 0x05000000
-        for offset,size in merged:
+        for offset,size,align in merged:
             bytez = elf.readAtOffset(offset,size)
-            memmaps.append((baseaddr + offset, 0x7, fname, bytez, None))
+            memmaps.append((baseaddr + offset, 0x7, fname, bytez, align))
 
         for sec in secs:
             if sec.sh_offset and sec.sh_size:
@@ -261,6 +261,11 @@ def getAddBaseAddr(elf, baseaddr=None):
     if not elf.isPreLinked() and elf.isSharedObject():
         addbase = True
         baseoff = baseaddr
+
+    elif elf.isRelocatable():
+        addbase = True
+        baseoff = 0
+
     else:
         addbase = False
         baseoff = baseaddr - elfbaseaddr
@@ -327,12 +332,13 @@ def loadElfIntoWorkspace(vw, elf, filename=None, baseaddr=None):
     vw.addNoReturnApi("*.pthread_exit")
     vw.addNoReturnApi("*.longjmp")
 
-    # for VivWorkspace, MSB==1, LSB==0... which is the same as True/False
+    # for VivWorkspace, MSB==1, LSB==0... which is the same as True/False for Big-Endian
     vw.setEndian(elf.getEndian())
 
     # Base addr is earliest section address rounded to pagesize
     # Some ELF's require adding the baseaddr to most/all later addresses
     addbase, baseoff, baseaddr = getAddBaseAddr(elf, baseaddr)
+    logger.warning("addbase: %r, baseoff: 0x%x, baseaddr: 0x%x", addbase, baseoff, baseaddr)
 
     # Keep track of if a LOAD happens for file offset 0
     elfHdrAtOffset0 = False
@@ -428,7 +434,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, baseaddr=None):
         makeFunctionTable(elf, vw, f_preinita, f_preinitasz, 'preinit_array', new_functions, new_pointers, baseoff)
 
     # dynamic table
-    phdr = elf.getDynPHdr()    # file offset?
+    phdr = elf.getDynPHdr()     # this is the Program Header which points at the DYNAMICS table, not the other way around.
     if phdr is not None:
         sva, size = phdr.p_vaddr, phdr.p_memsz
         sva += baseoff     # getDynInfo returns (offset, filesz)
@@ -1155,3 +1161,37 @@ def isStripped(elf):
         return True
 
     return False
+
+
+'''
+Base Offsets are complicated, so let's break them down a bit.
+
+Base Offsets originally refered to whether to add a base address to values to come up with a virtual address.
+Variations of ELFs that regularly cause problems/differences:
+    * Shared Objects
+    * Kernel Modules / Object files
+    * Prelinked SO's and EXEs
+
+Accesses which are impacted by these addresses/offsets:
+    * Pointer to Program Headers
+    * Pointer to Section Headers
+    * Program Headers
+    * Sections
+    * Dynamics Table
+    * Dynamics Entries (see dt_rebase for existing list which require adding base offsets)
+    Via either Sections or Dynamics:
+        * String Table(s)
+        * Symbol Table(s)
+        * Relocs Table(s)
+        * GOT
+        * PLT
+        * INIT / FINI
+        * INIT_ARRAY / FINI_ARRAY / PREINIT_ARRAY
+        * ???  Dwarf?
+
+If a file isn't intended for relocation, this can cause problems because:
+    * Pointers can be hard-coded into the instructions themselves
+    * ELF headers/Dynamics can not understand the relocatable parts
+
+    
+'''
