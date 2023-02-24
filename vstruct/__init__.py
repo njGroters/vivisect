@@ -2,9 +2,42 @@ import struct
 
 from copy import deepcopy
 from inspect import isclass
-from StringIO import StringIO
 
 import vstruct.primitives as vs_prims
+
+
+class MemObjFile:
+    """
+    A file like object that wraps a MemoryObject (envi) compatable
+    object with a file-like object where seek == VA.
+    """
+
+    def __init__(self, memobj, baseaddr):
+        self.baseaddr = baseaddr
+        self.offset = baseaddr
+        self.memobj = memobj
+
+    def seek(self, offset):
+        self.offset = self.baseaddr + offset
+
+    def flush(self):
+        pass
+
+    def tell(self):
+        return self.offset - self.baseaddr
+
+    def read(self, size=None):
+        if size is None:
+            # end of map for now, but perhaps this should be end of contiguous maps
+            _, size, _, _ = self.memobj.getMemoryMap(self.offset)
+            size -= self.offset
+        ret = self.memobj.readMemory(self.offset, size)
+        self.offset += size
+        return ret
+
+    def write(self, bytes):
+        self.memobj.writeMemory(self.offset, bytes)
+        self.offset += len(bytes)
 
 def isVstructType(x):
     return isinstance(x, vs_prims.v_base)
@@ -28,10 +61,10 @@ class VStruct(vs_prims.v_base):
         bytes = vs.vsEmit()
 
     '''
-    def __init__(self):
+    def __init__(self, bigend=False):
         # A tiny bit of evil...
         object.__setattr__(self, '_vs_values', {})
-        vs_prims.v_base.__init__(self)
+        vs_prims.v_base.__init__(self, bigend)
         self._vs_name = self.__class__.__name__
         self._vs_fields = []
         self._vs_field_align = False # To toggle visual studio style packing
@@ -41,7 +74,7 @@ class VStruct(vs_prims.v_base):
 
     def __mul__(self, x):
         # build a list of instances of this vstruct
-        return [ deepcopy(self) for i in xrange(x) ]
+        return [ deepcopy(self) for i in range(x) ]
 
     def vsAddParseCallback(self, fieldname, callback):
         '''
@@ -59,11 +92,11 @@ class VStruct(vs_prims.v_base):
 
             v.vsAddParseCallback('lenfield', updateLengthTarget)
         '''
-        if self._vs_values.get(fieldname) == None:
+        if self._vs_values.get(fieldname) is None:
             raise Exception('Invalid Field: %s' % fieldname)
 
         cblist = self._vs_pcallbacks.get(fieldname)
-        if cblist == None:
+        if cblist is None:
             cblist = []
             self._vs_pcallbacks[fieldname] = cblist
 
@@ -77,12 +110,17 @@ class VStruct(vs_prims.v_base):
 
     def _vsFireCallbacks(self, fname):
         callback = getattr(self, 'pcb_%s' % fname, None)
-        if callback != None:
+        if callback is not None:
             callback()
         cblist = self._vs_pcallbacks.get(fname)
-        if cblist != None:
+        if cblist is not None:
             for callback in cblist:
                 callback(self)
+
+    def vsSetEndian(self, bigend):
+        self._vs_bigend = bigend
+        for fldname, vsfield in list(self._vs_values.items()):
+            vsfield.vsSetEndian(bigend)
 
     @classmethod
     def vsFromFd(cls, fd, fast=True):
@@ -131,11 +169,11 @@ class VStruct(vs_prims.v_base):
         can may not be compatible with some structure defs.  ( eg mixed endian )
         """
         if fast:
-            if self._vs_fastfields == None:
+            if self._vs_fastfields is None:
                 self._vsInitFastFields()
             values = struct.unpack_from( self._vs_fastfmt, sbytes, offset )
             # Ephemeral list comprehension for speed
-            [ self._vs_fastfields[i].vsSetValue( values[i] ) for i in xrange(len(values)) ]
+            [ self._vs_fastfields[i].vsSetValue( values[i] ) for i in range(len(values)) ]
             return offset + self._vs_fastlen
 
         # In order for callbacks to change fields, we can't use vsGetFields()
@@ -160,12 +198,12 @@ class VStruct(vs_prims.v_base):
         Get back the byte sequence associated with this structure.
         """
         if fast:
-            if self._vs_fastfields == None:
+            if self._vs_fastfields is None:
                 self._vsInitFastFields()
             ffvals = [ ff.vsGetValue() for ff in self._vs_fastfields ]
             return struct.pack(self._vs_fastfmt, *ffvals)
 
-        ret = ''
+        ret = b''
         for fname, fobj in self.vsGetFields():
             ret += fobj.vsEmit()
         return ret
@@ -202,7 +240,7 @@ class VStruct(vs_prims.v_base):
 
     def vsGetField(self, name):
         x = self._vs_values.get(name)
-        if x == None:
+        if x is None:
             raise Exception("Invalid field: %s" % name)
         return x
 
@@ -213,9 +251,9 @@ class VStruct(vs_prims.v_base):
 
         Example:
             if x.vsHasField('woot'):
-                print 'STRUCT HAS WOOT FIELD!'
+                print('STRUCT HAS WOOT FIELD!')
         '''
-        return self._vs_values.get(name) != None
+        return self._vs_values.get(name) is not None
 
     def vsSetField(self, name, value):
         '''
@@ -258,12 +296,12 @@ class VStruct(vs_prims.v_base):
             # the first element of the VStruct/VArray...
             if value.vsIsPrim():
                 align = value._vs_align
-                if align == None:
+                if align is None:
                     align = len(value)
             else:
                 field = value.vsGetFirstPrim()
                 align = field._vs_align
-                if align == None:
+                if align is None:
                     align = len(field)
 
             delta = len(self) % align
@@ -281,7 +319,7 @@ class VStruct(vs_prims.v_base):
         Remove a field from the VStruct definition
         '''
         field = self._vs_values.pop(name,None)
-        if field == None:
+        if field is None:
             raise Exception('Invalid Field Name: %s' % name)
         self._vs_fields.remove(name)
 
@@ -337,7 +375,7 @@ class VStruct(vs_prims.v_base):
         Return a tuple of (name, field) for the field at the specified offset.
         '''
         nparts = names
-        if nparts == None:
+        if nparts is None:
             nparts = []
 
         off = coffset
@@ -387,7 +425,7 @@ class VStruct(vs_prims.v_base):
     def __getattr__(self, name):
         # Gotta do this for pickle issues...
         vsvals = self.__dict__.get("_vs_values")
-        if vsvals == None:
+        if vsvals is None:
             vsvals = {}
             self.__dict__["_vs_values"] = vsvals
         r = vsvals.get(name)
@@ -400,7 +438,7 @@ class VStruct(vs_prims.v_base):
     def __setattr__(self, name, value):
         # If we have this field, asign to it
         x = self._vs_values.get(name, None)
-        if x != None:
+        if x is not None:
             return self.vsSetField(name, value)
 
         # If it's a vstruct type, create a new field
@@ -436,7 +474,7 @@ class VStruct(vs_prims.v_base):
                     rstr = '0x%.8x (%d)' % (val,val)
             elif isinstance(field, vs_prims.v_prim):
                 rstr = repr(field)
-            if reprmax != None and len(rstr) > reprmax:
+            if reprmax is not None and len(rstr) > reprmax:
                 rstr = rstr[:reprmax] + '...'
             ret += "%.8x (%.2d)%s %s: %s\n" % (va+off, len(field), " "*(indent*2), name, rstr)
         return ret
@@ -456,7 +494,7 @@ class VArray(VStruct):
         self.vsAddField("%d" % idx, elem)
 
     def vsAddElements(self, count, eclass):
-        for i in xrange( count ):
+        for i in range( count ):
             self.vsAddElement( eclass() )
 
     def __getitem__(self, index):
@@ -483,10 +521,10 @@ class VUnion(VStruct):
         for fname,fobj in self.vsGetFields():
             ret = max(offset, fobj.vsParse(sbytes, offset=offset))
             callback = getattr(self, 'pcb_%s' % fname, None)
-            if callback != None:
+            if callback is not None:
                 callback()
             cblist = self._vs_pcallbacks.get(fname)
-            if cblist != None:
+            if cblist is not None:
                 for callback in cblist:
                     callback(self)
         return ret
@@ -522,7 +560,7 @@ def resolve(impmod, nameparts):
     m = impmod
     for nname in nameparts:
         m = getattr(m, nname, None)
-        if m == None:
+        if m is None:
             break
 
     return m
@@ -548,7 +586,7 @@ def getStructure(sname):
     definition from within vstruct.defs.
     """
     x = resolve(vs_defs, sname.split("."))
-    if x != None:
+    if x is not None:
         return x()
 
     return None
@@ -559,7 +597,7 @@ def getModuleNames():
 def getStructNames(modname):
     ret = []
     mod = resolve(vs_defs, modname)
-    if mod == None:
+    if mod is None:
         return ret
 
     for n in dir(mod):
@@ -568,4 +606,3 @@ def getStructNames(modname):
             ret.append(n)
 
     return ret
-

@@ -3,6 +3,8 @@ import logging
 import vstruct
 from vstruct.primitives import *
 
+logger = logging.getLogger(__name__)
+
 class MiniDumpString(vstruct.VStruct):
     def __init__(self):
         vstruct.VStruct.__init__(self)
@@ -570,7 +572,7 @@ class MiniDump(object):
                 stream = vars(self)[sclass.__name__] = sclass()
                 stream.vsParse(bytez, offset=soffset)
             else:
-                logging.info('unknown stream type')
+                logger.info('Unknown stream type of %d', header.StreamType)
 
     def tree(self):
         txt = []
@@ -598,7 +600,7 @@ class MiniDump(object):
 
         for idx, entry in self.MiniDumpMemoryInfoListStream.Entries:
             mname =  self.getModuleNameByAddr(entry.AllocationBase)
-            if mname == None:
+            if mname is None:
                 mname = 'Module Name Not Found'
 
             maps.append((entry.BaseAddress, entry.RegionSize, entry.Protect, mname))

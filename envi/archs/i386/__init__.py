@@ -1,18 +1,17 @@
+'''
+Intel 32-bit Architecture
+'''
 import envi
-import envi.bits as e_bits
-
-#TODO
-# f0 0f c7 4d 00 75 f0 5d 5b - this is NOT right in disasm
-
-import copy
-import struct
-import traceback
-
-# Gank in our bundled libdisassemble
-import opcode86
 
 from envi.archs.i386.regs import *
 from envi.archs.i386.disasm import *
+
+import envi.archs.i386.opconst as opconst
+
+PLATMODS = {
+    'linux': 0x80,
+    'windows': 0x2e
+}
 
 class i386Module(envi.ArchitectureModule):
 
@@ -20,22 +19,19 @@ class i386Module(envi.ArchitectureModule):
         envi.ArchitectureModule.__init__(self, 'i386')
         self._arch_dis = i386Disasm()
 
+    def initRegGroups(self):
+        envi.ArchitectureModule.initRegGroups(self)
+        self._regGrps.update({'general': ['eax', 'ecx', 'edx', 'ebx', 'esi', 'edi',
+                                'ebp', 'esp', 'eip'] })
+
     def archGetRegCtx(self):
         return i386RegisterContext()
 
     def archGetBreakInstr(self):
-        return '\xcc'
+        return b'\xcc'
 
     def archGetNopInstr(self):
-        return '\x90'
-
-    def archGetRegisterGroups(self):
-        groups = envi.ArchitectureModule.archGetRegisterGroups(self)
-        general = ('general', ['eax', 'ebx', 'ecx', 'edx', 'esi', 'edi',
-                                'ebp', 'esp', 'eip', ], )
-
-        groups.append(general)
-        return groups
+        return b'\x90'
 
     def getPointerSize(self):
         return 4
@@ -43,12 +39,11 @@ class i386Module(envi.ArchitectureModule):
     def pointerString(self, va):
         return '0x%.8x' % va
 
-    def archParseOpcode(self, bytes, offset=0, va=0):
-        return self._arch_dis.disasm(bytes, offset, va)
+    def archParseOpcode(self, bytes, offset=0, va=0, extra=None):
+        return self._arch_dis.disasm(bytes, offset, va, extra=extra)
 
     def getEmulator(self):
         return IntelEmulator()
 
 # NOTE: This one must be after the definition of i386Module
 from envi.archs.i386.emu import *
-

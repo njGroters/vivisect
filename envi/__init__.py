@@ -2,10 +2,19 @@
 The Envi framework allows architecture abstraction through the use of the
 ArchitectureModule, Opcode, Operand, and Emulator objects.
 '''
-
+import os
+import sys
+import copy
 import types
 import struct
+import logging
 import platform
+import contextlib
+import importlib.util as imputil
+
+from envi.exc import *
+
+logger = logging.getLogger(__name__)
 
 # TODO: move into const.py
 # Parsed Opcode Formats
@@ -14,51 +23,221 @@ ARCH_I386        = 1 << 16
 ARCH_AMD64       = 2 << 16
 ARCH_ARMV7       = 3 << 16
 ARCH_THUMB16     = 4 << 16
-ARCH_THUMB2      = 5 << 16
+ARCH_THUMB       = 5 << 16
 ARCH_MSP430      = 6 << 16
 ARCH_H8          = 7 << 16
+ARCH_A64         = 8 << 16
+ARCH_RISCV32     = 9 << 16
+ARCH_RISCV64     = 10 << 16
+ARCH_PPC_E32     = 11 << 16
+ARCH_PPC_E64     = 12 << 16
+ARCH_PPC_S32     = 13 << 16
+ARCH_PPC_S64     = 14 << 16
+ARCH_PPCVLE      = 15 << 16
+ARCH_PPC_D       = 16 << 16
+ARCH_MCS51       = 17 << 16
+ARCH_RXV2        = 18 << 16
+ARCH_SPARC       = 19 << 16
+ARCH_SPARC64     = 20 << 16
+ARCH_MIPS32      = 21 << 16
+ARCH_MIPS64      = 22 << 16
+
 ARCH_MASK        = 0xffff0000   # Masked into IF_FOO and BR_FOO values
 
-arch_names = {
-    ARCH_DEFAULT:   'default',
-    ARCH_I386:      'i386',
-    ARCH_AMD64:     'amd64',
-    ARCH_ARMV7:     'arm',
-    ARCH_THUMB16:   'thumb16',
-    ARCH_THUMB2:    'thumb2',
-    ARCH_MSP430:    'msp430',
-    ARCH_H8:        'h8',
+arch_defs = {
+    ARCH_I386:      {
+        'name':     'i386',
+        'aliases':  ('i486', 'i586', 'i686', 'x86'),
+        'modpath':  ('envi', 'archs', 'i386', ),
+        'clsname':  'i386Module',
+        },
+    
+    ARCH_AMD64:     {
+        'name':     'amd64',
+        'aliases':  ('x86_64',),
+        'modpath':  ('envi', 'archs', 'amd64'),
+        'clsname':  'Amd64Module',
+        },
+    
+    ARCH_ARMV7:     {
+        'name':     'arm',
+        'aliases':  ('armv6l', 'armv7l', 'a32'),
+        'modpath':  ('envi', 'archs', 'arm'),
+        'clsname':  'ArmModule',
+        },
+    
+    ARCH_THUMB16:   {
+        'name':     'thumb16',
+        'modpath':  ('envi', 'archs', 'thumb16'),
+        'clsname':  'Thumb16Module',
+        },
+    
+    ARCH_THUMB:     {
+        'name':     'thumb',
+        'aliases':  ('t32', 'thumb2'),
+        'modpath':  ('envi', 'archs', 'thumb16'),
+        'clsname':  'ThumbModule',
+        },
+    
+    ARCH_A64:       {
+        'name':     'a64',
+        'aliases':  ('aarch64',),
+        'modpath':  ('envi', 'archs', 'a64'),
+        'clsname':  'A64Module',
+        'disabled': True,
+        },
+    
+    ARCH_MSP430:    {
+        'name':     'msp430',
+        'modpath':  ('envi', 'archs', 'msp430'),
+        'clsname':  'Msp430Module',
+        },
+    
+    ARCH_H8:        {
+        'name':     'h8',
+        'modpath':  ('envi', 'archs', 'h8'),
+        'clsname':  'H8Module',
+        },
+    
+    ARCH_MCS51:     {
+        'name':     'mcs51',
+        'aliases':  ('8051', '80x51'),
+        'modpath':  ('envi', 'archs', 'mcs51'),
+        'clsname':  'Mcs51Module',
+        'disabled': True,
+        },
+    
+    ARCH_RISCV32:   {
+        'name':     'rv32',
+        'aliases':  ('riscv', 'risc-v',),
+        'modpath':  ('envi', 'archs', 'rv32'),
+        'clsname':  'Rv32Module',
+        'disabled': True,
+        },
+    
+    ARCH_RISCV64:   {
+        'name':     'rv64',
+        'modpath':  ('envi', 'archs', 'rv64'),
+        'clsname':  'Rv64Module',
+        'disabled': True,
+        },
+    
+    ARCH_PPC_E32:   {
+        'name':     'ppc32-embedded',
+        'aliases':  ('ppc32',),
+        'modpath':  ('envi', 'archs', 'ppc'),
+        'clsname':  'Ppc32EmbeddedModule',
+        'disabled': True,
+        },
+    
+    ARCH_PPC_E64:   {
+        'name':     'ppc-embedded',
+        'aliases':  ('ppc64-embedded','ppc-spe'),
+        'modpath':  ('envi', 'archs', 'ppc'),
+        'clsname':  'Ppc64EmbeddedModule',
+        'disabled': True,
+        },
+    
+    ARCH_PPC_S32:   {
+        'name':     'ppc32-server',
+        'modpath':  ('envi', 'archs', 'ppc32-server', 'Module'),
+        'modpath':  ('envi', 'archs', 'ppc'),
+        'clsname':  'Ppc32ServerModule',
+        'disabled': True,
+        },
+    
+    ARCH_PPC_S64:   {
+        'name':     'ppc-server',
+        'aliases':  ('ppc64-server','altivec', 'ppc-altivec'),
+        'modpath':  ('envi', 'archs', 'ppc'),
+        'clsname':  'Ppc64ServerModule',
+        'disabled': True,
+        },
+    
+    ARCH_PPCVLE:    {
+        'name':     'ppc-vle',
+        'aliases':  ('vle','ppc32-vle', 'ppcvle'),
+        'modpath':  ('envi', 'archs', 'ppc'),
+        'clsname':  'PpcVleModule',
+        'disabled': True,
+        },
+    
+    ARCH_PPC_D:     {
+        'name':     'ppc-desktop',
+        'modpath':  ('envi', 'archs', 'ppc'),
+        'clsname':  'PpcDesktopModule',
+        'disabled': True,
+        },
+    
+    ARCH_RXV2:      {
+        'name':     'rxv2',
+        'aliases':  ('rxv1', 'rx'),
+        'modpath':  ('envi', 'archs', 'rxv2'),
+        'clsname':  'RxModule',
+        'disabled': True,
+        },
+    
+    ARCH_SPARC:     {
+        'name':     'sparc',
+        'modpath':  ('envi', 'archs', 'sparc'),
+        'clsname':  'SparcModule',
+        'disabled': True,
+        },
+    
+    ARCH_SPARC64:   {
+        'name':     'sparc64',
+        'modpath':  ('envi', 'archs', 'sparc64'),
+        'clsname':  'Sparc64Module',
+        'disabled': True,
+        },
+    
+    ARCH_MIPS32:    {
+        'name':     'mips32',
+        'aliases':  ('mips',),
+        'modpath':  ('envi', 'archs', 'mips32'),
+        'clsname':  'Mips32Module',
+        'disabled': True,
+        },
+    
+    ARCH_MIPS64:    {
+        'name':     'mips64',
+        'modpath':  ('envi', 'archs', 'mips64'),
+        'clsname':  'Mips64Module',
+        'disabled': True,
+        },
 }
 
-arch_by_name = {
-    'default':  ARCH_DEFAULT,
-    'i386':     ARCH_I386,
-    'amd64':    ARCH_AMD64,
-    'arm':      ARCH_ARMV7,
-    'armv6l':   ARCH_ARMV7,
-    'armv7l':   ARCH_ARMV7,
-    'thumb16':  ARCH_THUMB16,
-    'thumb2':   ARCH_THUMB2,
-    'msp430':   ARCH_MSP430,
-    'h8':       ARCH_H8,
-}
+
+# dynamically build lookup dictionaries
+arch_by_name = {}
+arch_by_name_and_aliases = {}
+
+for arch, adict in arch_defs.items():
+    arch_by_name[adict['name']] = arch
+    arch_by_name_and_aliases[adict['name']] = arch
+
+    for alias in adict.get('aliases', []):
+        arch_by_name_and_aliases[alias] = arch
+
 
 # Instruction flags (The first 8 bits are reserved for arch independant use)
-IF_NOFALL = 0x01 # Set if this instruction does *not* fall through
-IF_PRIV   = 0x02 # Set if this is a "privileged mode" instruction
-IF_CALL   = 0x04 # Set if this instruction branches to a procedure
-IF_BRANCH = 0x08 # Set if this instruction branches
-IF_RET    = 0x10 # Set if this instruction terminates a procedure
-IF_COND   = 0x20 # Set if this instruction is conditional
-IF_REPEAT = 0x40 # set if this instruction repeats (including 0 times)
+IF_NOFALL = 0x01  # Set if this instruction does *not* fall through
+IF_PRIV   = 0x02  # Set if this is a "privileged mode" instruction
+IF_CALL   = 0x04  # Set if this instruction branches to a procedure
+IF_BRANCH = 0x08  # Set if this instruction branches
+IF_RET    = 0x10  # Set if this instruction terminates a procedure
+IF_COND   = 0x20  # Set if this instruction is conditional
+IF_REPEAT = 0x40  # set if this instruction repeats (including 0 times)
+
+IF_BRANCH_COND = IF_COND | IF_BRANCH
 
 # Branch flags (flags returned by the getBranches() method on an opcode)
-BR_PROC  = 1<<0 # The branch target is a procedure (call <foo>)
-BR_COND  = 1<<1 # The branch target is conditional (jz <foo>)
-BR_DEREF = 1<<2 # the branch target is *dereferenced* into PC (call [0x41414141])
-BR_TABLE = 1<<3 # The branch target is the base of a pointer array of jmp/call slots
-BR_FALL  = 1<<4 # The branch is a "fall through" to the next instruction
-BR_ARCH  = 1<<5 # The branch *switches opcode formats*. ( ARCH_FOO in high bits )
+BR_PROC  = 1<<0  # The branch target is a procedure (call <foo>)
+BR_COND  = 1<<1  # The branch target is conditional (jz <foo>)
+BR_DEREF = 1<<2  # the branch target is *dereferenced* into PC (call [0x41414141])
+BR_TABLE = 1<<3  # The branch target is the base of a pointer array of jmp/call slots
+BR_FALL  = 1<<4  # The branch is a "fall through" to the next instruction
+BR_ARCH  = 1<<5  # The branch *switches opcode formats*. ( ARCH_FOO in high bits )
 
 from envi.const import *
 import envi.bits as e_bits
@@ -74,11 +253,32 @@ class ArchitectureModule:
     """
     _default_call = None
     _plat_def_calls = {}
-    def __init__(self, archname, maxinst=32):
+    def __init__(self, archname, maxinst=32, endian=ENDIAN_LSB):
         self._arch_id = getArchByName(archname)
         self._arch_name = archname
         self._arch_maxinst = maxinst
-        self._arch_badopbytes = ['\x00\x00\x00\x00\x00']
+        self._arch_badopbytes = [b'\x00\x00\x00\x00\x00', b'\xff\xff\xff\xff\xff']
+        self.setEndian(endian)
+        self.badops = []
+
+        self.initRegGroups()
+
+
+    def initRegGroups(self):
+        '''
+        Initializes the _regGrps dictionary with all the different register 
+        subsets are pertinent to a given architecture.
+
+        This defaults to include an "all" register group, generated by the
+        register context object.
+
+        Architectures should also implement at least "general" for the most
+        commonly used registers.
+        '''
+        self._regGrps = {}
+        regctx = self.archGetRegCtx()
+        allr = [rname for rname in regctx.getRegisterNames()]
+        self._regGrps['all'] = allr
 
     def getArchId(self):
         '''
@@ -92,6 +292,21 @@ class ArchitectureModule:
         in this module.
         '''
         return self._arch_name
+
+    def getEndian(self):
+        '''
+        Every architecture stores numbers either Most-Significant-Byte-first (MSB)
+        or Least-Significant-Byte-first (LSB).  Most modern architectures are
+        LSB, however many legacy systems still use MSB architectures.
+        '''
+        return self._endian
+
+    def setEndian(self, endian):
+        '''
+        Set the architecture endianness.  Subclasses should make sure this is handled
+        correctly in any Disasm object(s)
+        '''
+        self._endian = endian
 
     def archGetBreakInstr(self):
         """
@@ -115,47 +330,88 @@ class ArchitectureModule:
         """
         raise ArchNotImplemented("archGetRegCtx")
 
-    def archParseOpcode(self, bytez, offset=0, va=0):
+    def archParseOpcode(self, bytez, offset=0, va=0, extra=None):
         '''
         Parse an architecture specific Opcode object from the given bytes.
 
         offset  - Offset into bytes to begin opcode parsing
         va      - Virtual address of the instruction ( for rel calcs )
+        extra   - An optional dictionary of information to pass down to an
+                  archmod to provide additional context.
 
         Example:
-            a.archParseOpcode('\xeb\xfe', va=0x41414141)
+            a.archParseOpcode(b'\xeb\xfe', va=0x41414141, extra={'platform': 'windows'})
         '''
         raise ArchNotImplemented('archParseOpcode')
 
     def archGetRegisterGroups(self):
         '''
-        Returns a tuple of tuples of registers for different register groups.
+        Returns a dictionary of tuples of registers for different register groups.
         If not implemented for an architecture, returns a single group with
         all non-meta registers.
 
         Example:
-            [ ('all', ['eax', 'ebx', ...] ), ...]
+            { 'all': ['eax', 'ebx', ...], ...}
         '''
-        regctx = self.archGetRegCtx()
-        allr = [rname for rname in regctx.getRegisterNames()]
-        return [ ('all', allr), ]
+        return copy.deepcopy(self._regGrps)
+
+    def archGetRegisterGroup(self, name):
+        '''
+        Returns a tuple of registers for a named register group.  Returns
+        None if requested name does not exist
+        '''
+        return copy.deepcopy(self._regGrps.get(name))
+
+    def archModifyFuncAddr(self, va, info):
+        '''
+        Can modify the VA and context based on architecture-specific info.
+        Default: return the same va, info
+
+        This hook allows an architecture to correct VA and Architecture, such
+        as is necessary for ARM/Thumb.
+
+        "info" should be a dictionary with the {'arch': ARCH_FOO}
+
+        eg.  for ARM, the ARM disassembler would hand in
+            {'arch': ARCH_ARMV7}
+
+        and if va is odd, that architecture's implementation would return
+            (va & -2), {'arch': ARCH_THUMB}
+        '''
+        return va, info
+
+    def archModifyXrefAddr(self, tova, reftype, rflags):
+        '''
+        Returns a potentially modified set of (tova, reftype, rflags).
+        Default: return the same tova, reftype, rflags
+
+        This hook allows an architecture to modify an Xref before it's set,
+        which can be helpful for ARM/Thumb.
+        '''
+        return tova, reftype, rflags
 
     def archGetBadOps(self, byteslist=None):
         '''
         Returns a list of opcodes which are indicators of wrong disassembly.
         byteslist is None to use the architecture default, or can be a custom list.
         '''
-        if byteslist == None:
+        if byteslist is None:
+            # if we've already done this exercize...
+            if len(self.badops):
+                return self.badops
+
+            # otherwise, let's start with the architecture's badops list
             byteslist = self._arch_badopbytes
 
-        badops = []
+        self.badops = []
         for badbytes in byteslist:
             try:
                 self.badops.append(self.archParseOpcode(badbytes))
             except:
                 pass
 
-        return badops
+        return self.badops
+
     def getEmulator(self):
         """
         Return a default instance of an emulator for the given arch.
@@ -181,6 +437,9 @@ class ArchitectureModule:
         defcall = self._plat_def_calls.get(platform)
         return defcall
 
+    def archGetPointerAlignment(self):
+        return 1
+
 def stealArchMethods(obj, archname):
     '''
     Used by objects which are expected to inherit from an
@@ -191,110 +450,6 @@ def stealArchMethods(obj, archname):
         o = getattr(arch, name, None)
         if type(o) == types.MethodType:
             setattr(obj, name, o)
-
-class EnviException(Exception):
-    def __str__(self):
-        return repr(self)
-
-class InvalidInstruction(EnviException):
-    """
-    Raised by opcode parsers when the specified
-    bytes do not represent a valid opcode
-    """
-    def __init__(self, bytez=None, mesg=None, va=0):
-        msg = []
-        if mesg != None:
-            msg = [ mesg ]
-
-        if bytez != None:
-            msg.append( "'" + bytez.encode('hex') + "'" )
-
-        if va != 0:
-            msg.append( 'at ' + hex(va) )
-        EnviException.__init__(self, ' '.join(msg))
-
-class SegmentationViolation(EnviException):
-    """
-    Raised by an Emulator extension when you
-    bad-touch memory. (Likely from memobj).
-    """
-    def __init__(self, va, msg=None):
-        if msg == None:
-            msg = "Bad Memory Access: %s" % hex(va)
-        EnviException.__init__(self, msg)
-        self.va = va
-
-class ArchNotImplemented(EnviException):
-    """
-    Raised by various Envi components when the architecture
-    does not implement that envi component.
-    """
-    pass
-
-class EmuException(EnviException):
-    """
-    A parent for all emulation exceptions so catching
-    them can be easy.
-    """
-    def __init__(self, emu, msg=None):
-        EnviException.__init__(self, msg)
-        self.va = emu.getProgramCounter()
-
-    def __repr__(self):
-        return "%s at %s" % (self.__class__.__name__, hex(self.va))
-
-class UnsupportedInstruction(EmuException):
-    """
-    Raised by emulators when the given instruction
-    is not implemented by the emulator.
-    """
-    def __init__(self, emu, op):
-        EmuException.__init__(self, emu)
-        self.op = op
-
-    def __repr__(self):
-        return "Unsupported Instruction: 0x%.8x %s" % (self.va, repr(self.op))
-
-class DivideByZero(EmuException):
-    """
-    Raised by an Emulator when a divide/mod has
-    a 0 divisor...
-    """
-
-class BreakpointHit(EmuException):
-    """
-    Raised by an emulator when you execute a breakpoint instruction
-    """
-
-class PDEUndefinedFlag(EmuException):
-    """
-    This exception is raised when a conditional operation is dependant on
-    a flag state that is unknown.
-    """
-
-class PDEException(EmuException):
-    """
-    This exception is used in partially defined emulation to signal where
-    execution flow becomes un-known due to undefined values.  This is considered
-    un-recoverable.
-    """
-
-class UnknownCallingConvention(EmuException):
-    """
-    Raised when the getCallArgs() or execCallReturn() methods
-    are given an unknown calling convention type.
-    """
-
-class MapOverlapException(EnviException):
-    """
-    Raised when adding a memory map to a MemoryObject which overlaps
-    with another already existing map.
-    """
-    def __init__(self, map1, map2):
-        self.map1 = map1
-        self.map2 = map2
-        margs = (map1[0], map1[1], map2[0], map2[1])
-        EnviException.__init__(self, "Map At 0x%.8x (%d) overlaps map at 0x%.8x (%d)" % margs)
 
 class Operand:
 
@@ -313,8 +468,7 @@ class Operand:
         NOTE: This API may be passed a None emu and should return what it can
               (or None if it can't be resolved)
         """
-        print "%s needs to implement getOperValue!" % self.__class__.__name__
-        return None
+        raise NotImplementedError("%s needs to implement getOperValue!" % self.__class__.__name__)
 
     def setOperValue(self, op, emu, val):
         """
@@ -322,7 +476,7 @@ class Operand:
         the given emulator/workspace/trace to assign things like
         memory and registers.
         """
-        print("%s needs to implement setOperValue! (0x%.8x: %s) " % (self.__class__.__name__, op.va, repr(op)))
+        logger.warning("%s needs to implement setOperAddr!" % self.__class__.__name__)
 
     def isDeref(self):
         """
@@ -348,7 +502,7 @@ class Operand:
         '''
         return False
 
-    def getOperAddr(self, op, emu):
+    def getOperAddr(self, op, emu=None):
         """
         If the operand is a "dereference" operand, this method should use the
         specified op/emu to resolve the address of the dereference.
@@ -356,8 +510,7 @@ class Operand:
         NOTE: This API may be passed a None emu and should return what it can
               (or None if it can't be resolved)
         """
-        print("%s needs to implement getOperAddr!" % self.__class__.__name__)
-        return None
+        logger.warning("%s needs to implement getOperAddr!" % self.__class__.__name__)
 
     def repr(self, op):
         """
@@ -465,7 +618,6 @@ class Opcode:
     def __len__(self):
         return int(self.size)
 
-
     # NOTE: From here down is mostly things that architecture specific opcode
     #       extensions should override.
     def isCall(self):
@@ -511,6 +663,16 @@ class Opcode:
         """
         return ()
 
+    def genRefOpers(self, emu=None):
+        '''
+        Operand generator, yielding an (oper-index, operand) tuple from this
+        Opcode... but only for operands which make sense for XREF analysis.
+        Override when architecture makes use of odd operands like the program
+        counter, which returns a real value even without an emulator.
+        '''
+        for oidx, o in enumerate(self.opers):
+            yield (oidx, o)
+
     def render(self, mcanv):
         """
         Render this opcode to the memory canvas passed in.  This is used for both
@@ -524,17 +686,17 @@ class Opcode:
         architecture specific prefix bitmask.
         """
         ret = []
-        for byte,name in self.prefix_names:
+        for byte, name in self.prefix_names:
             if self.prefixes & byte:
                 ret.append(name)
-        return "".join(ret)
+        return " ".join(ret)
 
     def getOperValue(self, idx, emu=None):
         oper = self.opers[idx]
         return oper.getOperValue(self, emu=emu)
 
     def getOperands(self):
-        return list(self.opers)
+        return self.opers
 
 class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
     """
@@ -547,7 +709,7 @@ class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
     (NOTE: Most users will just use an arch mod and call getEmulator())
 
     The intention is for "light weight" emulation to be
-    implemented mostly for user-space emulation of 
+    implemented mostly for user-space emulation of
     protected mode execution.
     """
     def __init__(self, archmod=None):
@@ -556,7 +718,7 @@ class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
         e_mem.MemoryObject.__init__(self, arch=archmod._arch_id)
         e_reg.RegisterContext.__init__(self)
 
-        self._emu_segments = [ (0, 0xffffffff), ]
+        self._emu_segments = [(0, 0xffffffff)]
         self._emu_call_convs = {}
         self._emu_opts = {}
         self._emu_optdocs = {}
@@ -582,7 +744,7 @@ class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
         '''
         Set a (previously initialized) emulator option.
         '''
-        if not self._emu_opts.has_key(opt):
+        if opt not in self._emu_opts:
             raise Exception('Unknown Emu Opt: %s' % opt)
         self._emu_opts[opt] = val
 
@@ -591,9 +753,25 @@ class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
         Retrieve the current value of an emulator option.
         ( emu impls may directly access _emu_opts for speed )
         '''
-        if not self._emu_opts.has_key(opt):
+        if opt not in self._emu_opts:
             raise Exception('Unknown Emu Opt: %s' % opt)
         return self._emu_opts.get(opt)
+
+    def setEndian(self, endian):
+        '''
+        Sets Endianness for the Emulator.
+        '''
+        for arch in self.imem_archs:
+            # imem_archs may be sparse, with gaps of None
+            if not arch:
+                continue
+            arch.setEndian(endian)
+
+    def getEndian(self):
+        '''
+        Returns the current Endianness for the emulator
+        '''
+        return self.imem_archs[0].getEndian()
 
     def getMeta(self, name, default=None):
         return self.metadata.get(name, default)
@@ -622,9 +800,29 @@ class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
         self.setRegisterSnap(regs)
         self.setMemorySnap(mem)
 
+    @contextlib.contextmanager
+    def snap(self):
+        '''
+        Utility function to try something with an emulator, and then revert it.
+        If we fail to get a valid snap, we raise a base EmuException. Otherwise,
+        we yield out the snap we received.
+
+        On close, we try to rollback the emulator using the snap.
+        '''
+        try:
+            snap = self.getEmuSnap()
+        except Exception as e:
+            raise EmuException(self, str(e)) from None
+
+        try:
+            yield snap
+        finally:
+            self.setEmuSnap(snap)
+
     def executeOpcode(self, opobj):
         """
-        This is the core method for the 
+        This is the core method for an emulator to do any running of instructions and
+        setting of the program counter should an instruction require that.
         """
         raise ArchNotImplemented()
 
@@ -632,9 +830,11 @@ class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
         """
         Run the emulator until "something" happens.
         (breakpoint, segv, syscall, etc...)
+
+        Set stepcount in order to run that many instructions before pausing emulation
         """
-        if stepcount != None:
-            for i in xrange(stepcount):
+        if stepcount is not None:
+            for i in range(stepcount):
                 self.stepi()
         else:
             while True:
@@ -703,7 +903,7 @@ class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
         Usage: getCallArgs(3, "stdcall") -> (0, 32, 0xf00)
         """
         c = self._emu_call_convs.get(cc, None)
-        if c == None:
+        if c is None:
             raise UnknownCallingConvention(cc)
 
         return c.getCallArgs(self, count)
@@ -717,7 +917,7 @@ class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
         for the calling convention)
         """
         c = self._emu_call_convs.get(cc, None)
-        if c == None:
+        if c is None:
             raise UnknownCallingConvention(cc)
 
         return c.execCallReturn(self, value, argc)
@@ -726,7 +926,7 @@ class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
         self._emu_call_convs[name] = obj
 
     def hasCallingConvention(self, name):
-        if self._emu_call_convs.get(name) != None:
+        if self._emu_call_convs.get(name) is not None:
             return True
         return False
 
@@ -734,53 +934,36 @@ class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
         return self._emu_call_convs.get(name)
 
     def getCallingConventions(self):
-        return self._emu_call_convs.items()
+        return list(self._emu_call_convs.items())
 
     def readMemValue(self, addr, size):
         """
         Returns the value of the bytes at the "addr" address, given the size (currently, power of 2 only)
         """
-        #FIXME: Handle endianness
         bytes = self.readMemory(addr, size)
-        if bytes == None:
+        if bytes is None:
             return None
         if len(bytes) != size:
             raise Exception("Read Gave Wrong Length At 0x%.8x (va: 0x%.8x wanted %d got %d)" % (self.getProgramCounter(),addr, size, len(bytes)))
-        if size == 1:
-            return struct.unpack("B", bytes)[0]
-        elif size == 2:
-            return struct.unpack(">H", bytes)[0]
-        elif size == 4:
-            return struct.unpack(">L", bytes)[0]
-        elif size == 8:
-            return struct.unpack(">Q", bytes)[0]
+
+        return e_bits.parsebytes(bytes, 0, size, False, self.getEndian())
 
     def writeMemValue(self, addr, value, size):
         #FIXME change this (and all uses of it) to passing in format...
         #FIXME: Remove byte check and possibly half-word check.  (possibly all but word?)
-        #FIXME: Handle endianness
-        if size == 1:
-            bytes = struct.pack("B",value & 0xff)
-        elif size == 2:
-            bytes = struct.pack(">H",value & 0xffff)
-        elif size == 4:
-            bytes = struct.pack(">L", value & 0xffffffff)
-        elif size == 8:
-            bytes = struct.pack(">Q", value & 0xffffffffffffffff)
+        mask = e_bits.u_maxes[size]
+        bytes = e_bits.buildbytes(value & mask, size, self.getEndian())
+
         self.writeMemory(addr, bytes)
 
     def readMemSignedValue(self, addr, size):
         #FIXME: Remove byte check and possibly half-word check.  (possibly all but word?)
         #FIXME: Handle endianness
         bytes = self.readMemory(addr, size)
-        if bytes == None:
+        if bytes is None:
             return None
-        if size == 1:
-            return struct.unpack("b", bytes)[0]
-        elif size == 2:
-            return struct.unpack(">h", bytes)[0]
-        elif size == 4:
-            return struct.unpack(">l", bytes)[0]
+        fmttbl = e_bits.fmt_schars[self.getEndian()]
+        return struct.unpack(fmttbl[size], bytes)[0]
 
     def integerSubtraction(self, op, sidx=0, midx=1):
         """
@@ -794,7 +977,7 @@ class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
         subtra = self.getOperValue(op, sidx)
         minuend = self.getOperValue(op, midx)
 
-        if subtra == None or minuend == None:
+        if subtra is None or minuend is None:
             self.undefFlags()
             return None
 
@@ -802,8 +985,8 @@ class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
 
     def intSubBase(self, subtrahend, minuend, ssize, msize):
         '''
-        Base for integer subtraction.  
-        Segmented such that order of operands can easily be overridden by 
+        Base for integer subtraction.
+        Segmented such that order of operands can easily be overridden by
         subclasses.  Does not set flags (arch-specific), and doesn't set
         the dest operand.  That's up to the instruction implementation.
 
@@ -836,7 +1019,7 @@ class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
         dst = self.getOperValue(op, 1)
 
         #FIXME PDE and flags
-        if src == None:
+        if src is None:
             self.undefFlags()
             self.setOperValue(op, 1, None)
             return
@@ -860,7 +1043,7 @@ class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
         src2 = self.getOperValue(op, 1)
 
         # PDE
-        if src1 == None or src2 == None:
+        if src1 is None or src2 is None:
             self.undefFlags()
             self.setOperValue(op, 1, None)
             return
@@ -868,8 +1051,6 @@ class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
         res = src1 & src2
 
         return res
-
-
 
 
 class CallingConvention(object):
@@ -898,25 +1079,25 @@ class CallingConvention(object):
     Details:
         pad - # of bytes on stack to allocate between RET and First Stack Arg
 
-        align - stack alignment.  as this is >= pointer size, this is used as 
+        align - stack alignment.  as this is >= pointer size, this is used as
                 the amount of space to leave for RET and Args
 
-        delta - stack delta to apply before arguments                
+        delta - stack delta to apply before arguments
 
-        flags - flags for this convention, namely Caller or Callee Cleanup 
+        flags - flags for this convention, namely Caller or Callee Cleanup
 
-        arg_def - list of tuples indicating what each arg is.  
-            (CC_REG, REG_which)     - this Arg is a register, specifically 
+        arg_def - list of tuples indicating what each arg is.
+            (CC_REG, REG_which)     - this Arg is a register, specifically
                                         REG_which
             (CC_STACK_INF, #)       - indicates the start of STACK-based Args
                                         Currently the number is ignored
 
         retaddr_def  - where does the function get a return address from?
-            (CC_STACK, #) - on the stack, at offset 0 
+            (CC_STACK, #) - on the stack, at offset 0
             (CC_REG, REG_which) - in register "REG_which", eg. REG_LR
 
         retval_def  - where does the function return value go?
-            (CC_STACK, #) - on the stack, at offset 0 
+            (CC_STACK, #) - on the stack, at offset 0
             (CC_REG, REG_which) - in register "REG_which", eg. REG_EAX
 
         CC_REG      - Ret, Retval or Arg use a particular register
@@ -1181,7 +1362,7 @@ class CallingConvention(object):
         '''
         self.setCallArgs(emu, args)
 
-        if ra != None:
+        if ra is not None:
             self.setReturnAddress(emu, ra)
 
     def setupCall(self, emu, args=None, ra=None):
@@ -1194,16 +1375,16 @@ class CallingConvention(object):
         program counter.
         '''
         argv = []
-        if args != None:
+        if args is not None:
             argv.extend(args)
 
         argc = len(argv)
 
-        if ra == None:
+        if ra is None:
             ra = emu.getProgramCounter()
 
         self.allocateCallSpace(emu, argc)
-        self.setCallArgsRet(emu, args=args, ra=ra)
+        self.setCallArgsRet(emu, args=argv, ra=ra)
 
     def executeCall(self, emu, va, args=None, ra=None):
         '''
@@ -1259,13 +1440,13 @@ def getArchByName(archname):
     '''
     Get the architecture constant by the humon name.
     '''
-    return arch_by_name.get(archname)
+    return arch_by_name_and_aliases.get(archname)
 
 def getArchById(archid):
     '''
     Get the architecture name by the constant.
     '''
-    return arch_names.get(archid)
+    return arch_defs.get(archid).get('name')
 
 def getCurrentArch():
     """
@@ -1280,76 +1461,147 @@ def getCurrentArch():
     elif width == 8:
         ret = arch_xlate_64.get(mach)
 
-    if ret == None:
+    if ret is None:
         raise ArchNotImplemented(mach)
 
     return ret
 
+def getRealArchName(name):
+    """
+    Returns the official Architecture Name given an architecture name (which could be an alias, 
+    like x86_64 for amd64)
+    """
+    for arch, adict in arch_defs.items():
+        rname = adict.get('name')
+        if name == rname:
+            return rname
+
+        if name in adict.get('aliases', []):
+            return rname
+
+    return name
+
+def getArchNames():
+    """
+    Return a subset (dict) of arch_by_name which only include enabled architectures.
+    This is helpful for accessing and displaying available architectures, since we now
+    allow definitions of architectures which may not be enabled or implemented.
+
+    Returns:   dict of { archnum: archname } 
+    """
+    return {arch: name for (name, arch) in arch_by_name.items() if not arch_defs.get(arch).get('disabled')}
+    
+
 def getArchModule(name=None):
     """
-    return an Envi architecture module instance for the following
+    Return an Envi architecture module instance for the following
     architecture name.
 
-    Current architectures include:
-
-    i386 - Intel i386
-    amd64 - The new 64bit AMD spec.
+    If name is None, uses the "current" architecture.
     """
-    if name == None:
+    if name is None:
         name = getCurrentArch()
 
-    # Some builds have x86 (py2.6) and some have other stuff...
-    if name in ["i386","i486","i586","i686","x86"]:
-        import envi.archs.i386 as e_i386
-        return e_i386.i386Module()
+    rname = getRealArchName(name)
+    archnum = arch_by_name.get(rname)
 
-    elif name == "amd64":
-        import envi.archs.amd64 as e_amd64
-        return e_amd64.Amd64Module()
+    if archnum not in arch_defs:
+        raise ArchNotImplemented(name, "Architecture not defined")
 
-    elif name in ( 'arm', 'armv6l', 'armv7l' ):
-        import envi.archs.arm as e_arm
-        return e_arm.ArmModule()
+    if arch_defs.get(archnum).get('disabled'):
+        raise ArchNotImplemented(name, "Architecture Disabled")
 
-    elif name in ( 'thumb', 'thumb16', 'thumb2' ):
-        import envi.archs.thumb16 as e_thumb
-        return e_thumb.Thumb16Module()
+    # retrieve path and class info.  envi/archs/<archname>/__init__.py with amodname()
+    modpathtup = arch_defs[archnum]['modpath']
+    amodname = arch_defs[archnum].get('clsname')
 
-    elif name in ( 'msp430', ):
-        import envi.archs.msp430 as e_msp430
-        return e_msp430.Msp430Module()
+    # load the module (given the path and module name)
+    try:
+        module = loadModuleFromPathTup(rname, modpathtup)
 
-    elif name in ( 'h8', ):
-        import envi.archs.h8 as e_h8
-        return e_h8.H8Module()
+    except ModuleLoadFailure as e:
+        raise ArchNotImplemented(e.component, e.message)
 
-    else:
-        raise ArchNotImplemented(name)
+    # instantiate the ArchitectureModule
+    cls = getattr(module, amodname)
+    archmod = cls()
+    
+    return archmod
+
+def loadModuleFromPathTup(modname, modpathtup):
+    '''
+    Load a Python module given a module path tuple
+
+    Searches through the PYTHONPATH for a matching module
+    '''
+    modpath = os.path.join(*modpathtup)
+    for pathbase in sys.path:
+        tmppath = os.path.join(pathbase, modpath)
+        if os.path.exists(tmppath):
+            modpath = tmppath
+            break
+    
+    return loadModuleFromAbsolutePath(modname, modpath)
+
+def loadModuleFromAbsolutePathTup(modname, modpathtup):
+    '''
+    Load a Python module given an absolute module path tuple
+    '''
+    modpath = os.sep + os.path.join(*modpathtup)
+    return loadModuleFromAbsolutePath(modname, modpath)
+
+def loadModuleFromAbsolutePath(modname, modpath):
+    '''
+    Load a Python module given an absolute module path string
+    '''
+    # if we hand in the path to the directory, load the __init__.py
+    if os.path.isdir(modpath):
+        modpath = os.path.join(modpath, '__init__.py')
+
+    if not os.path.exists(modpath):
+        raise ModuleLoadFailure(modname, "Path does not exist: %r" % modpath)
+
+    # get the module spec
+    spec = imputil.spec_from_file_location(modname, modpath)
+    if not spec:
+        raise ModuleLoadFailure(modname, "Failed to load module")
+
+    # create an unintialized module from the spec
+    module = imputil.module_from_spec(spec)
+    if not module:
+        raise ModuleLoadFailure(modname, "Failed to create uninitialized module from the spec")
+
+    # insert the module into sys.modules:
+    sys.modules[modname] = module
+
+    # initialize the module (actually "importing" it)
+    spec.loader.exec_module(module)
+
+    return module
 
 def getArchModules(default=ARCH_DEFAULT):
     '''
     Retrieve a default array of arch modules ( where index 0 is
     also the "named" or "default" arch module.
     '''
-    import envi.archs.h8 as e_h8
-    import envi.archs.arm as e_arm
-    import envi.archs.i386 as e_i386
-    import envi.archs.amd64 as e_amd64
-    import envi.archs.thumb16 as e_thumb16
-    import envi.archs.msp430 as e_msp430
+    archs = []
+    for arch, adict in arch_defs.items():
+        name = adict.get('name')
+        archidx = arch>>16
+        try:
+            archmod = getArchModule(name)
 
-    archs = [ None, ]
+            # make sure the list can hold this arch -- THIS NEGATES THE NEED FOR `ARCH_MAX`
+            archslen = len(archs)
+            if archidx >= archslen:
+                diff = 1 + archidx - archslen
+                archs.extend([None for x in range(diff)])
 
-    # These must be in ARCH_FOO order
-    archs.append( e_i386.i386Module() )
-    archs.append( e_amd64.Amd64Module() )
-    archs.append( e_arm.ArmModule() )
-    archs.append( e_thumb16.Thumb16Module() )
-    archs.append( e_thumb16.Thumb2Module() )
-    archs.append( e_msp430.Msp430Module() )
-    archs.append( e_h8.H8Module() )
+            archs[archidx] = archmod
+        except ArchNotImplemented:
+            pass
 
-    # Set the default module ( or None )
-    archs[ ARCH_DEFAULT ] = archs[ default >> 16 ]
+        except Exception as e:
+            logger.critical(e, exc_info=1)
 
     return archs
