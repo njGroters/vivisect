@@ -1917,7 +1917,11 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
             msize = len(bytes)
             va = self.getFreeMemAddr(msize)
 
-        self._fireEvent(VWE_ADDMMAP, (va, perms, fname, bytes, align))
+        # handle nasty special case of an empty map with an alignment
+        if not len(bytes):
+            bytes = b'\0'
+
+                self._fireEvent(VWE_ADDMMAP, (va, perms, fname, bytes, align))
 
         # since we don't return anything from _fireEvent(), pull the new info:
         mva, msz, mperm, mbytes = self.getMemoryMap(va)
