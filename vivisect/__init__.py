@@ -1921,7 +1921,7 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
         if not len(bytes):
             bytes = b'\0'
 
-                self._fireEvent(VWE_ADDMMAP, (va, perms, fname, bytes, align))
+        self._fireEvent(VWE_ADDMMAP, (va, perms, fname, bytes, align))
 
         # since we don't return anything from _fireEvent(), pull the new info:
         mva, msz, mperm, mbytes = self.getMemoryMap(va)
