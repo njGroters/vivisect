@@ -44,12 +44,24 @@ ARCH_MIPS64      = 22 << 16
 
 ARCH_MASK        = 0xffff0000   # Masked into IF_FOO and BR_FOO values
 
+# Code Maturity Ratings.  Also used for Unittest categories
+MAT_NONE = 0            # does not exist
+MAT_ALPHA = 1           # code exists, but immature.  no promises
+MAT_BETA = 2            # kinda works, not overly confident
+MAT_TESTING = 3         # works ok, initial RC
+MAT_PROD = 4            # production
+
+maturity = {v:k for k,v in globals().items() if k.startswith('MAT_')}
+
+
 arch_defs = {
     ARCH_I386:      {
         'name':     'i386',
         'aliases':  ('i486', 'i586', 'i686', 'x86'),
         'modpath':  ('envi', 'archs', 'i386', ),
         'clsname':  'i386Module',
+        'maturity': {'disasm': MAT_PROD, 'emu': MAT_PROD, 'symboliks': MAT_PROD, 
+                    'unittests': {'disasm': MAT_BETA, 'emu': MAT_ALPHA, 'symboliks': MAT_BETA} },
         },
     
     ARCH_AMD64:     {
@@ -57,6 +69,8 @@ arch_defs = {
         'aliases':  ('x86_64',),
         'modpath':  ('envi', 'archs', 'amd64'),
         'clsname':  'Amd64Module',
+        'maturity': {'disasm': MAT_PROD, 'emu': MAT_PROD, 'symboliks': MAT_PROD, 
+                    'unittests': {'disasm': MAT_BETA, 'emu': MAT_ALPHA, 'symboliks': MAT_BETA} },
         },
     
     ARCH_ARMV7:     {
@@ -64,12 +78,16 @@ arch_defs = {
         'aliases':  ('armv6l', 'armv7l', 'a32'),
         'modpath':  ('envi', 'archs', 'arm'),
         'clsname':  'ArmModule',
+        'maturity': {'disasm': MAT_TESTING, 'emu': MAT_TESTING, 'symboliks': MAT_NONE, 
+                    'unittests': {'disasm': MAT_TESTING, 'emu': MAT_ALPHA, 'symboliks': MAT_NONE} },
         },
     
     ARCH_THUMB16:   {
         'name':     'thumb16',
         'modpath':  ('envi', 'archs', 'thumb16'),
         'clsname':  'Thumb16Module',
+        'maturity': {'disasm': MAT_TESTING, 'emu': MAT_TESTING, 'symboliks': MAT_NONE, 
+                    'unittests': {'disasm': MAT_TESTING, 'emu': MAT_ALPHA, 'symboliks': MAT_NONE} },
         },
     
     ARCH_THUMB:     {
@@ -77,6 +95,8 @@ arch_defs = {
         'aliases':  ('t32', 'thumb2'),
         'modpath':  ('envi', 'archs', 'thumb16'),
         'clsname':  'ThumbModule',
+        'maturity': {'disasm': MAT_TESTING, 'emu': MAT_TESTING, 'symboliks': MAT_NONE, 
+                    'unittests': {'disasm': MAT_TESTING, 'emu': MAT_ALPHA, 'symboliks': MAT_NONE} },
         },
     
     ARCH_A64:       {
@@ -85,18 +105,24 @@ arch_defs = {
         'modpath':  ('envi', 'archs', 'a64'),
         'clsname':  'A64Module',
         'disabled': True,
+        'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
+                    'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
     
     ARCH_MSP430:    {
         'name':     'msp430',
         'modpath':  ('envi', 'archs', 'msp430'),
         'clsname':  'Msp430Module',
+        'maturity': {'disasm': MAT_TESTING, 'emu': MAT_BETA, 'symboliks': MAT_NONE,
+                    'unittests': {'disasm': MAT_BETA, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
     
     ARCH_H8:        {
         'name':     'h8',
         'modpath':  ('envi', 'archs', 'h8'),
         'clsname':  'H8Module',
+        'maturity': {'disasm': MAT_TESTING, 'emu': MAT_BETA, 'symboliks': MAT_NONE,
+                    'unittests': {'disasm': MAT_TESTING, 'emu': MAT_BETA, 'symboliks': MAT_NONE} },
         },
     
     ARCH_MCS51:     {
@@ -105,6 +131,8 @@ arch_defs = {
         'modpath':  ('envi', 'archs', 'mcs51'),
         'clsname':  'Mcs51Module',
         'disabled': True,
+        'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
+                    'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
     
     ARCH_RISCV32:   {
@@ -113,6 +141,8 @@ arch_defs = {
         'modpath':  ('envi', 'archs', 'rv32'),
         'clsname':  'Rv32Module',
         'disabled': True,
+        'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
+                    'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
     
     ARCH_RISCV64:   {
@@ -120,6 +150,8 @@ arch_defs = {
         'modpath':  ('envi', 'archs', 'rv64'),
         'clsname':  'Rv64Module',
         'disabled': True,
+        'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
+                    'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
     
     ARCH_PPC_E32:   {
@@ -127,6 +159,8 @@ arch_defs = {
         'aliases':  ('ppc32',),
         'modpath':  ('envi', 'archs', 'ppc'),
         'clsname':  'Ppc32EmbeddedModule',
+        'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
+                    'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
     
     ARCH_PPC_E64:   {
@@ -134,6 +168,8 @@ arch_defs = {
         'aliases':  ('ppc64-embedded','ppc-spe'),
         'modpath':  ('envi', 'archs', 'ppc'),
         'clsname':  'Ppc64EmbeddedModule',
+        'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
+                    'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
     
     ARCH_PPC_S32:   {
@@ -141,6 +177,8 @@ arch_defs = {
         'modpath':  ('envi', 'archs', 'ppc32-server', 'Module'),
         'modpath':  ('envi', 'archs', 'ppc'),
         'clsname':  'Ppc32ServerModule',
+        'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
+                    'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
     
     ARCH_PPC_S64:   {
@@ -148,6 +186,8 @@ arch_defs = {
         'aliases':  ('ppc64-server','altivec', 'ppc-altivec'),
         'modpath':  ('envi', 'archs', 'ppc'),
         'clsname':  'Ppc64ServerModule',
+        'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
+                    'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
     
     ARCH_PPCVLE:    {
@@ -155,12 +195,16 @@ arch_defs = {
         'aliases':  ('vle','ppc32-vle', 'ppcvle'),
         'modpath':  ('envi', 'archs', 'ppc'),
         'clsname':  'PpcVleModule',
+        'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
+                    'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
     
     ARCH_PPC_D:     {
         'name':     'ppc-desktop',
         'modpath':  ('envi', 'archs', 'ppc'),
         'clsname':  'PpcDesktopModule',
+        'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
+                    'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
     
     ARCH_RXV2:      {
@@ -169,6 +213,8 @@ arch_defs = {
         'modpath':  ('envi', 'archs', 'rxv2'),
         'clsname':  'RxModule',
         'disabled': True,
+        'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
+                    'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
     
     ARCH_SPARC:     {
@@ -176,6 +222,8 @@ arch_defs = {
         'modpath':  ('envi', 'archs', 'sparc'),
         'clsname':  'SparcModule',
         'disabled': True,
+        'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
+                    'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
     
     ARCH_SPARC64:   {
@@ -183,6 +231,8 @@ arch_defs = {
         'modpath':  ('envi', 'archs', 'sparc64'),
         'clsname':  'Sparc64Module',
         'disabled': True,
+        'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
+                    'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
     
     ARCH_MIPS32:    {
@@ -191,6 +241,8 @@ arch_defs = {
         'modpath':  ('envi', 'archs', 'mips32'),
         'clsname':  'Mips32Module',
         'disabled': True,
+        'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
+                    'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
     
     ARCH_MIPS64:    {
@@ -198,6 +250,8 @@ arch_defs = {
         'modpath':  ('envi', 'archs', 'mips64'),
         'clsname':  'Mips64Module',
         'disabled': True,
+        'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
+                    'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
 }
 
