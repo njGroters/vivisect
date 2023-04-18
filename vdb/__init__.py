@@ -111,6 +111,9 @@ class VdbTrace(object):
     def __getattr__(self, name):
         return getattr(self.db.getTrace(), name)
 
+    def vprint(self, msg, addnl=True):
+        return self.db.vprint(msg, addnl)
+
 defconfig = {
 
     'vdb':{
@@ -368,7 +371,7 @@ class Vdb(e_cli.EnviMutableCli, v_notif.Notifier, v_util.TraceManager):
 
         **kwargs is handed into the new trace to handle any platform magic
         """
-        oldtrace = self.getTrace(**kwargs)
+        oldtrace = self.getTrace()
         if oldtrace.isRunning():
             oldtrace.sendBreak()
         if oldtrace.isAttached():
@@ -501,7 +504,7 @@ class Vdb(e_cli.EnviMutableCli, v_notif.Notifier, v_util.TraceManager):
             trace.setMeta('PendingBreak', False)
             bp = trace.getCurrentBreakpoint()
             if bp:
-                if not self.silent:
+                if not bp.silent:
                     self.vprint("Thread: %d Hit Break: %s" % (tid, repr(bp)))
                 cmdstr = self.bpcmds.get(bp.id, None)
                 if cmdstr is not None:
@@ -586,6 +589,7 @@ class Vdb(e_cli.EnviMutableCli, v_notif.Notifier, v_util.TraceManager):
         if douni:
             memstr = (b"\x00".join(memstr)) + b"\x00"
 
+        memstr = memstr.decode('utf8')
         addr = self.parseExpression(exprstr)
         self.memobj.writeMemory(addr, memstr)
         self.vdbUIEvent('vdb:writemem', (addr,memstr))
