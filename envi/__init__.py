@@ -140,16 +140,19 @@ arch_defs = {
     ARCH_RISCV32:   {
         'name':     'rv32',
         'aliases':  ('riscv', 'risc-v',),
-        'modpath':  ('envi', 'archs', 'rv32'),
-        'clsname':  'Rv32Module',
+        'modpath':  ('envi', 'archs', 'riscv'),
+        'clsname':  'RiscV32Module',
+        'disabled': False,
         'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
                     'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
     
     ARCH_RISCV64:   {
         'name':     'rv64',
-        'modpath':  ('envi', 'archs', 'rv64'),
-        'clsname':  'Rv64Module',
+        'aliases':  ('riscv64',),
+        'modpath':  ('envi', 'archs', 'riscv'),
+        'clsname':  'RiscV64Module',
+        'disabled': False,
         'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
                     'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
