@@ -133,7 +133,6 @@ arch_defs = {
         'aliases':  ('8051', '80x51'),
         'modpath':  ('envi', 'archs', 'mcs51'),
         'clsname':  'Mcs51Module',
-        'disabled': True,
         'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
                     'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
