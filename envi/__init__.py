@@ -142,7 +142,6 @@ arch_defs = {
         'aliases':  ('riscv', 'risc-v',),
         'modpath':  ('envi', 'archs', 'rv32'),
         'clsname':  'Rv32Module',
-        'disabled': True,
         'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
                     'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
@@ -151,7 +150,6 @@ arch_defs = {
         'name':     'rv64',
         'modpath':  ('envi', 'archs', 'rv64'),
         'clsname':  'Rv64Module',
-        'disabled': True,
         'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
                     'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
@@ -789,6 +787,9 @@ class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
         self._emu_opts = {}
         self._emu_optdocs = {}
 
+        self.populateOpMethods()
+
+    def populateOpMethods(self):
         # Automagically setup an instruction mnemonic handler dict
         # by finding all methods starting with i_ and assume they
         # implement an instruction by mnemonic
