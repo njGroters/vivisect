@@ -679,10 +679,9 @@ class VivWorkspaceCore(viv_impapi.ImportApi):
     def _doSetEndian(self, endian):
         self.bigend = endian
         for arch in self.imem_archs:
+            if not arch:
+                continue
             arch.setEndian(self.bigend)
-
-        if self.arch is not None:
-            self.arch.setEndian(self.bigend)
 
 
 #################################################################
@@ -690,18 +689,25 @@ class VivWorkspaceCore(viv_impapi.ImportApi):
 #  setMeta key callbacks
 #
     def _mcb_Architecture(self, name, value):
+        archid = envi.getArchByName(value)
+        try:
+            # Some of the ENVI archs defined may not architecture modules that 
+            # are still in progress
+            self.setMemArchitecture(archid)
+        except IndexError:
+            raise Exception("Architecture Module not defined for %s yet!" % value)
+
         # This is for legacy stuff...
         self.arch = envi.getArchModule(value)
         self.psize = self.arch.getPointerSize()
-
-        archid = envi.getArchByName(value)
-        self.setMemArchitecture(archid)
 
         # Default calling convention for architecture
         # This will be superceded by Platform and Parser settings
         defcall = self.arch.getArchDefaultCall()
         if defcall:
             self.setMeta('DefaultCall', defcall)
+
+        self.arch.archMarkupVW(self)
 
         self._load_event.set()
 
@@ -740,7 +746,11 @@ class VivWorkspaceCore(viv_impapi.ImportApi):
         self.vprint('Workspace was Saved to Server: %s' % wshost)
         self.vprint('(You must close this local copy and work from the server to stay in sync.)')
 
-    def _mcb_PpcVleMaps(self, name, maps):
+    def _mcb_PpcVlePages(self, name, maps):
+        """
+        Each time the PPC VLE Pages meta gets set we need to update the VLE
+        configuration information in all PPC architecture modules.
+        """
         ppc_archs = (
             envi.ARCH_PPC_E32,
             envi.ARCH_PPC_E64,
@@ -749,6 +759,7 @@ class VivWorkspaceCore(viv_impapi.ImportApi):
             envi.ARCH_PPCVLE,
             envi.ARCH_PPC_D,
         )
+
         for arch in ppc_archs:
             arch_idx = arch >> 16
             self.imem_archs[arch_idx].setVleMaps(maps)

@@ -9,14 +9,60 @@ Ways to access registers, flags or memory:
     '[expr:20]'     eg: '[r0+4:20]'             - read/write 20 bytes of memory at expr
 '''
 
-GOOD_EMU_TESTS = 462
+from envi.archs.ppc.const import *  # after adding this, I can use the variables from const.py
+
+FDNP = FP_DOUBLE_NEG_PYNAN
+FDPP = FP_DOUBLE_POS_PYNAN
+FSNP = FP_SINGLE_NEG_PYNAN
+FSPP = FP_SINGLE_POS_PYNAN
+FDNQ = FP_DOUBLE_NEG_QNAN
+FDPQ = FP_DOUBLE_POS_QNAN
+FDNS = FP_DOUBLE_NEG_SNAN
+FDPS = FP_DOUBLE_POS_SNAN
+FDNI = FP_DOUBLE_NEG_INF
+FDPI = FP_DOUBLE_POS_INF
+FSNQ = FP_SINGLE_NEG_QNAN
+FSPQ = FP_SINGLE_POS_QNAN
+FSNS = FP_SINGLE_NEG_SNAN
+FSPS = FP_SINGLE_POS_SNAN
+FSNI = FP_SINGLE_NEG_INF
+FSPI = FP_SINGLE_POS_INF
+FDNZ = FP_DOUBLE_NEG_ZERO
+FDPZ = FP_DOUBLE_POS_ZERO
+FSNZ = FP_SINGLE_NEG_ZERO
+FSPZ = FP_SINGLE_POS_ZERO
+FHNQ = FP_HALF_NEG_QNAN
+FHPQ = FP_HALF_POS_QNAN
+FHNI = FP_HALF_NEG_INF
+FHPI = FP_HALF_POS_INF
+FHNS = FP_HALF_NEG_SNAN
+FHPS = FP_HALF_POS_SNAN
+FHNZ = FP_HALF_NEG_ZERO
+FHPZ = FP_HALF_POS_ZERO
+
+_1p1s = 0x3F8CCCCD # 1.1
+_2p2s = 0x400CCCCD # 2.2
+_3p3s = 0x40533333 # 3.3
+_4p4s = 0x408CCCCD
+_5p5s = 0x40B00000
+
+n_1p1s = 0xBF8CCCCD # 1.1
+n_2p2s = 0xC00CCCCD # 2.2
+n_3p3s = 0xC0533333 # 3.3
+n_4p4s = 0xC08CCCCD
+n_5p5s = 0xC0B00000
+
+pi_d = 0x400921fb54442d18
+pi_s = 0x40490fdb
+
+GOOD_EMU_TESTS = 522
 
 emutests = {
-    #'e9f2': [{'setup': (('PC', 0x471450), ('lr', 0x313370)),
-    #    'tests': (('PC', 0x471434), ('lr', 0x471452))}],   # se_bl -0x1c
+    #'e9f2': [{'setup': (('pc', 0x471450), ('lr', 0x313370)),
+    #    'tests': (('pc', 0x471434), ('lr', 0x471452))}],   # se_bl -0x1c
 
-    #'e8eb': [{'setup': (('PC', 0x471450), ('lr', 0x313370 )),
-    #    'tests': (('PC', 0x471450), ('lr', 0x313370))}],   # se_b -0x2a
+    #'e8eb': [{'setup': (('pc', 0x471450), ('lr', 0x313370 )),
+    #    'tests': (('pc', 0x471450), ('lr', 0x313370))}],   # se_b -0x2a
 
     '7CDF0214': [
         {
@@ -1285,7 +1331,7 @@ emutests = {
     '7C0000A6': [  # 7C0000A6,mfmsr r0
         {
             'setup': (
-                ('MSR', 0x9000),
+                ('msr', 0x9000),
                 ('r0', 0),
 
             ),
@@ -1382,9 +1428,9 @@ emutests = {
                 ('cr0', 0b0010)
             ),
         },
-        
+
     ],   # 7EAAAB78,"mr r10,r21"
-    
+
     # '73408E0C': [  # 73408E0C,"e_add2i. r0,0xd60c"
     #     {
     #         'setup': (
@@ -1436,10 +1482,10 @@ emutests = {
     # '79FB59A6': [  # 79FB59A6,e_b 0x3ffb9f06
     #     {
     #         'setup': (
-    #             ('PC', 0x10000534),
+    #             ('pc', 0x10000534),
     #         ),
     #         'tests': (
-    #             ('PC', 0x3ffb9f06),
+    #             ('pc', 0x3ffb9f06),
 
     #         ),
     #     },
@@ -1448,10 +1494,10 @@ emutests = {
     # '79F6BD8F': [  # 79F6BD8F,e_bl 0x3ff702ee
     #     {
     #         'setup': (
-    #             ('PC', 0x10000534),
+    #             ('pc', 0x10000534),
     #         ),
     #         'tests': (
-    #             ('PC', 0x3ff702ee),
+    #             ('pc', 0x3ff702ee),
 
     #         ),
     #     },
@@ -1460,34 +1506,34 @@ emutests = {
     '7A00FE4E': [  # e_bge [cr0,] 0x3ffffe4e
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b1000),    # LT bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x0),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0100),    # GT bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x0),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0010),    # EQ bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x0),
             ),
         },
@@ -1645,10 +1691,10 @@ emutests = {
 'E880': [  # E880,se_b -0x100
         {
             'setup': (
-                ('PC', 0x10001110),
+                ('pc', 0x10001110),
             ),
             'tests': (
-                ('PC', 0x10001010),
+                ('pc', 0x10001010),
             ),
         },
     ],  # #E880,se_b 0x40004460
@@ -1690,10 +1736,10 @@ emutests = {
         {
             'setup': (
                 ('ctr', 0x10001010),
-                ('PC', 0x40004560)
+                ('pc', 0x40004560)
             ),
             'tests': (
-                ('PC', 0x10001010),
+                ('pc', 0x10001010),
             ),
         },
     ],  # 0006,se_bctr
@@ -1702,11 +1748,11 @@ emutests = {
         {
             'setup': (
                 ('ctr', 0x10001010),
-                ('PC', 0x40004560),
+                ('pc', 0x40004560),
                 ('lr', 0x10000010)
             ),
             'tests': (
-                ('PC', 0x10001010),
+                ('pc', 0x10001010),
                 ('lr', 0x40004562)
             ),
         },
@@ -1715,20 +1761,20 @@ emutests = {
 'E696': [  # E696,se_beq -0xD4
         {
             'setup': (
-                ('PC', 0x40004560),
+                ('pc', 0x40004560),
                 ('cr0', 0b0000)
             ),
             'tests': (
-                ('PC', 0x40004562),
+                ('pc', 0x40004562),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40004560),
+                ('pc', 0x40004560),
                 ('cr0', 0b0010)
             ),
             'tests': (
-                ('PC', 0x4000448C),
+                ('pc', 0x4000448C),
             ),
         },
     ],  # E696,se_beq 0x4000448c
@@ -1736,29 +1782,29 @@ emutests = {
     'E08C': [  # E08C,se_bge -0xE8
         {
             'setup': (
-                ('PC', 0x400045E8),
+                ('pc', 0x400045E8),
                 ('cr0', 0b1000)
             ),
             'tests': (
-                ('PC', 0x400045EA),
+                ('pc', 0x400045EA),
             ),
         },
         {
             'setup': (
-                ('PC', 0x400045E8),
+                ('pc', 0x400045E8),
                 ('cr0', 0b0010)
             ),
             'tests': (
-                ('PC', 0x40004500),
+                ('pc', 0x40004500),
             ),
         },
         {
             'setup': (
-                ('PC', 0x400045E8),
+                ('pc', 0x400045E8),
                 ('cr0', 0b0100)
             ),
             'tests': (
-                ('PC', 0x40004500),
+                ('pc', 0x40004500),
             ),
         },
 
@@ -1800,29 +1846,29 @@ emutests = {
     'E5A6': [  # E5A6,se_bgt 0x400044ac
         {
             'setup': (
-                ('PC', 0x400045B4),
+                ('pc', 0x400045B4),
                 ('cr0', 0b1000)
             ),
             'tests': (
-                ('PC', 0x400045B6),
+                ('pc', 0x400045B6),
             ),
         },
         {
             'setup': (
-                ('PC', 0x400045B4),
+                ('pc', 0x400045B4),
                 ('cr0', 0b0010)
             ),
             'tests': (
-                ('PC', 0x400045B6),
+                ('pc', 0x400045B6),
             ),
         },
         {
             'setup': (
-                ('PC', 0x400045B4),
+                ('pc', 0x400045B4),
                 ('cr0', 0b0100)
             ),
             'tests': (
-                ('PC', 0x40004500),
+                ('pc', 0x40004500),
             ),
         },
     ],  #E5A6,se_bgt 0x400044ac
@@ -1830,18 +1876,18 @@ emutests = {
     'E980': [  # E980,se_bl -0x100
         {
             'setup': (
-                ('PC', 0x400045B4),
+                ('pc', 0x400045B4),
             ),
             'tests': (
-                ('PC', 0x400044B4),
+                ('pc', 0x400044B4),
             ),
         },
         {
             'setup': (
-                ('PC', 0x400046B6),
+                ('pc', 0x400046B6),
                ),
             'tests': (
-                ('PC', 0x400045B6),
+                ('pc', 0x400045B6),
             ),
         },
     ],  # E980,se_bl 0x40004460
@@ -1849,29 +1895,29 @@ emutests = {
  'E188': [  # E188,se_ble -0xF0
         {
             'setup': (
-                ('PC', 0x40004560),
+                ('pc', 0x40004560),
                 ('cr0', 0b1000)
             ),
             'tests': (
-                ('PC', 0x40004470),
+                ('pc', 0x40004470),
             ),
         },
         {
             'setup': (
-                ('PC', 0x400045F0),
+                ('pc', 0x400045F0),
                 ('cr0', 0b0010)
             ),
             'tests': (
-                ('PC', 0x40004500),
+                ('pc', 0x40004500),
             ),
         },
         {
             'setup': (
-                ('PC', 0x400045F0),
+                ('pc', 0x400045F0),
                 ('cr0', 0b0100)
             ),
             'tests': (
-                ('PC', 0x400045F2),
+                ('pc', 0x400045F2),
             ),
         },
     ],  # E188,se_ble -0xF0
@@ -1882,16 +1928,16 @@ emutests = {
                 ('lr', 0x40006540),
             ),
             'tests': (
-                ('PC', 0x40006540),
+                ('pc', 0x40006540),
             ),
         },
         {
             'setup': (
-                ('PC', 0x400045F0),
+                ('pc', 0x400045F0),
                 ('lr',0x40004560)
             ),
             'tests': (
-                ('PC', 0x40004560),
+                ('pc', 0x40004560),
             ),
         },
     ],  # 0004,se_blr
@@ -1899,21 +1945,21 @@ emutests = {
     '0005': [  # 000l,se_blrl
         {
             'setup': (
-                ('PC', 0x400045F0),
+                ('pc', 0x400045F0),
                 ('lr',0x40004560)
             ),
             'tests': (
-                ('PC', 0x40004560),
+                ('pc', 0x40004560),
                 ('lr', 0x400045f2)
             ),
         },
         {
             'setup': (
-                ('PC', 0x400046F0),
+                ('pc', 0x400046F0),
                 ('lr',0x40004560)
             ),
             'tests': (
-                ('PC', 0x40004560),
+                ('pc', 0x40004560),
                 ('lr', 0x400046f2)
             ),
         },
@@ -1922,29 +1968,29 @@ emutests = {
     'E486': [  # E486,se_blt -0xF4
         {
             'setup': (
-                ('PC', 0x400045f4),
+                ('pc', 0x400045f4),
                 ('cr0', 0b1000)
             ),
             'tests': (
-                ('PC', 0x40004500),
+                ('pc', 0x40004500),
             ),
         },
         {
             'setup': (
-                ('PC', 0x400045F4),
+                ('pc', 0x400045F4),
                 ('cr0', 0b0010)
             ),
             'tests': (
-                ('PC', 0x400045F6),
+                ('pc', 0x400045F6),
             ),
         },
         {
             'setup': (
-                ('PC', 0x400045F4),
+                ('pc', 0x400045F4),
                 ('cr0', 0b0100)
             ),
             'tests': (
-                ('PC', 0x400045F6),
+                ('pc', 0x400045F6),
             ),
         },
     ],  # E486,se_blt 0x4000446c
@@ -1988,29 +2034,29 @@ emutests = {
      'E281': [  # E281,se_bne -0xFE
         {
             'setup': (
-                ('PC', 0x400045FE),
+                ('pc', 0x400045FE),
                 ('cr0', 0b1000)
             ),
             'tests': (
-                ('PC', 0x40004500),
+                ('pc', 0x40004500),
             ),
         },
         {
             'setup': (
-                ('PC', 0x400045FE),
+                ('pc', 0x400045FE),
                 ('cr0', 0b0100)
             ),
             'tests': (
-                ('PC', 0x40004500),
+                ('pc', 0x40004500),
             ),
         },
        {
             'setup': (
-                ('PC', 0x400045FE),
+                ('pc', 0x400045FE),
                 ('cr0', 0b0010)
             ),
             'tests': (
-                ('PC', 0x40004600),
+                ('pc', 0x40004600),
             ),
         },
     ],  # E281,se_bne -0xFE
@@ -2903,20 +2949,20 @@ emutests = {
 
         {
             'setup': (
-                ('PC', 0x10001110),
+                ('pc', 0x10001110),
                 ('cr0', 0b0011)
             ),
             'tests': (
-                ('PC', 0x10001132),
+                ('pc', 0x10001132),
             ),
         },
          {
             'setup': (
-                ('PC', 0x10001110),
+                ('pc', 0x10001110),
                 ('cr0', 0b0010)
             ),
             'tests': (
-                ('PC', 0x10001112),
+                ('pc', 0x10001112),
             ),
         },
     ],  # #E880,se_b 0x40004460
@@ -2925,20 +2971,20 @@ emutests = {
 
         {
             'setup': (
-                ('PC', 0x10001110),
+                ('pc', 0x10001110),
                 ('cr0', 0b0101)
             ),
             'tests': (
-                ('PC', 0x10001132),
+                ('pc', 0x10001132),
             ),
         },
          {
             'setup': (
-                ('PC', 0x10001110),
+                ('pc', 0x10001110),
                 ('cr0', 0b0010)
             ),
             'tests': (
-                ('PC', 0x10001112),
+                ('pc', 0x10001112),
             ),
         },
     ],  # #E880,se_b 0x40004460
@@ -2946,34 +2992,34 @@ emutests = {
     '7A00FE4F': [  # e_bgel [cr0,] 0x3ffffe4e
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b1000),    # LT bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x40000004),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0100),    # GT bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x40000004),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0010),    # EQ bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x40000004),
             ),
         },
@@ -2982,34 +3028,34 @@ emutests = {
     '7A01FE4E': [  # e_ble [cr0,] 0x3ffffe4e
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b1000),    # LT bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x0),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0100),    # GT bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x0),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0010),    # EQ bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x0),
             ),
         },
@@ -3018,34 +3064,34 @@ emutests = {
     '7A01FE4F': [  # e_blel [cr0,] 0x3ffffe4e
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b1000),    # LT bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x40000004),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0100),    # GT bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x40000004),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0010),    # EQ bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x40000004),
             ),
         },
@@ -3054,34 +3100,34 @@ emutests = {
     '7A02FE4E': [  # e_bne [cr0,] 0x3ffffe4e
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b1000),    # LT bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x0),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0100),    # GT bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x0),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0010),    # EQ bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x0),
             ),
         },
@@ -3090,34 +3136,34 @@ emutests = {
     '7A02FE4F': [  # e_bnel [cr0,] 0x3ffffe4e
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b1000),    # LT bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x40000004),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0100),    # GT bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x40000004),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0010),    # EQ bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x40000004),
             ),
         },
@@ -3126,23 +3172,23 @@ emutests = {
     '7A03FE4E': [  # e_bns [cr0,] 0x3ffffe4e
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0000),    # no SO bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x0),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0001),    # SO bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x0),
             ),
         },
@@ -3151,23 +3197,23 @@ emutests = {
     '7A03FE4F': [  # e_bnsl [cr0,] 0x3ffffe4e
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0000),    # no SO bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x40000004),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0001),    # SO bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x40000004),
             ),
         },
@@ -3176,34 +3222,34 @@ emutests = {
     '7A10FE4E': [  # e_blt [cr0,] 0x3ffffe4e
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b1000),    # LT bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x0),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0100),    # GT bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x0),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0010),    # EQ bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x0),
             ),
         },
@@ -3212,34 +3258,34 @@ emutests = {
     '7A10FE4F': [  # e_bltl [cr0,] 0x3ffffe4e
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b1000),    # LT bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x40000004),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0100),    # GT bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x40000004),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0010),    # EQ bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x40000004),
             ),
         },
@@ -3248,34 +3294,34 @@ emutests = {
     '7A11FE4E': [  # e_bgt [cr0,] 0x3ffffe4e
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b1000),    # LT bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x0),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0100),    # GT bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x0),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0010),    # EQ bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x0),
             ),
         },
@@ -3284,34 +3330,34 @@ emutests = {
     '7A11FE4F': [  # e_bgtl [cr0,] 0x3ffffe4e
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b1000),    # LT bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x40000004),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0100),    # GT bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x40000004),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0010),    # EQ bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x40000004),
             ),
         },
@@ -3320,34 +3366,34 @@ emutests = {
     '7A12FE4E': [  # e_beq [cr0,] 0x3ffffe4e
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b1000),    # LT bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x0),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0100),    # GT bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x0),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0010),    # EQ bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x0),
             ),
         },
@@ -3356,34 +3402,34 @@ emutests = {
     '7A12FE4F': [  # e_beql [cr0,] 0x3ffffe4e
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b1000),    # LT bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x40000004),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0100),    # GT bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x40000004),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0010),    # EQ bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x40000004),
             ),
         },
@@ -3392,23 +3438,23 @@ emutests = {
     '7A13FE4E': [  # e_bso [cr0,] 0x3ffffe4e
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0000),    # no SO bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x0),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0001),    # SO bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x0),
             ),
         },
@@ -3417,23 +3463,23 @@ emutests = {
     '7A13FE4F': [  # e_bsol [cr0,] 0x3ffffe4e
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0000),    # no SO bit, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x40000004),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('cr0', 0b0001),    # SO bit, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x40000004),
             ),
         },
@@ -3442,23 +3488,23 @@ emutests = {
     '7A20FE4E': [  # e_bdnz [cr0,] 0x3ffffe4e
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('ctr', 0x1),   # decrements to 0, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x0),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('ctr', 0x2),   # decrements to non-zero, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x0),
             ),
         },
@@ -3467,23 +3513,23 @@ emutests = {
     '7A20FE4F': [  # e_bdnzl [cr0,] 0x3ffffe4e
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('ctr', 0x1),   # decrements to 0, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x40000004),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('ctr', 0x2),   # decrements to non-zero, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x40000004),
             ),
         },
@@ -3492,23 +3538,23 @@ emutests = {
     '7A30FE4E': [  # e_bdz [cr0,] 0x3ffffe4e
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('ctr', 0x1),   # decrements to 0, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x0),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('ctr', 0x2),   # decrements to non-zero, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x0),
             ),
         },
@@ -3517,23 +3563,23 @@ emutests = {
     '7A30FE4F': [  # e_bdzl [cr0,] 0x3ffffe4e
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('ctr', 0x1),   # decrements to 0, branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x3ffffe4e),
+                ('pc', 0x3ffffe4e),
                 ('lr', 0x40000004),
             ),
         },
         {
             'setup': (
-                ('PC', 0x40000000),
+                ('pc', 0x40000000),
                 ('ctr', 0x2),   # decrements to non-zero, don't branch
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000004),
+                ('pc', 0x40000004),
                 ('lr', 0x40000004),
             ),
         },
@@ -5840,11 +5886,11 @@ emutests = {
     '79FFFFE0': [  # e_b -0x10
         {
             'setup': (
-                ('PC', 0x40000050),
+                ('pc', 0x40000050),
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000030),
+                ('pc', 0x40000030),
                 ('lr', 0x0),
             ),
         },
@@ -5853,11 +5899,11 @@ emutests = {
     '79FFFFE1': [  # e_bl -0x10
         {
             'setup': (
-                ('PC', 0x40000050),
+                ('pc', 0x40000050),
                 ('lr', 0x0),
             ),
             'tests': (
-                ('PC', 0x40000030),
+                ('pc', 0x40000030),
                 ('lr', 0x40000054),
             ),
         },
@@ -5996,6 +6042,645 @@ emutests = {
             )
         },
     ],
+
+    '100112c9':[ # efsdiv r0,r1,r2
+        {
+            'setup':(
+                ('r0',0x0),
+                ('r1',_1p1s),
+                ('r2',_3p3s)),
+            'tests':(
+                ('r0',0x3EAAAAAB),
+                )
+        },
+            {'setup':(
+                ('r0',0x0),
+                ('r1',n_1p1s),
+                ('r2',_3p3s)
+                ),
+            'tests':(
+                ('r0',0xbEAAAAAB),
+                )
+        },
+        {
+            'setup':(
+                ('r0',0x0),
+                ('r1',FSNS),
+                ('r2',0x7F80_000),
+                ),
+            'tests':(
+                ('r0',0xff7fffff),
+                )
+        },
+            {'setup':(
+                ('r0',0x0),
+                ('r1',0x40800000),
+                ('r2',0x40000000)
+                ),
+            'tests':(
+                ('r0',0x40000000),
+                )
+        },
+            {'setup':(
+                ('r0',0x0),
+                ('r1',0x40800000),
+                ('r2',0)),
+            'tests':(
+                ('r0',0x7f7fffff),)
+        },
+    ],
+
+    '100112c0': [ # efsadd r0,r1,r2
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', _1p1s),
+                ('r2', _1p1s)
+            ),
+            'tests': (
+                ('r0', 0x400ccccd),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', 0x40800000),
+                ('r2', 0x40800000)
+            ),
+            'tests': (
+                ('r0', 0x41000000),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', 0xBF8CCCCD),
+                ('r2', 0xBF8CCCCD)
+            ),
+            'tests': (
+                ('r0', 0xc00ccccd),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', 0x40800000),
+                ('r2', 0x40000000)
+            ),
+            'tests': (
+                ('r0', 0x40c00000),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', 0x40800000),
+                ('r2', FSNS)
+            ),
+            'tests': (
+                ('r0', 0xff7fffff),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', FSNS),
+                ('r2', 0x40800000)
+            ),
+            'tests': (
+                ('r0', 0xff7fffff),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', FSPS),
+                ('r2', 0x40800000)
+            ),
+            'tests': (
+                ('r0', 0x7f7fffff),
+            )
+        },
+    ],
+
+    '100112c1': [ # efssub r0,r1,r2
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', _1p1s),
+                ('r2', _1p1s)
+            ),
+            'tests': (
+                ('r0', 0x0),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', 0x40800000),
+                ('r2', 0x40400000)
+            ),
+            'tests': (
+                ('r0', 0x3F800000),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', 0x3F8CCCCD),
+                ('r2', 0xBF8CCCCD)
+            ),
+            'tests': (
+                ('r0', 0x400CCCCD),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', 0x40800000),
+                ('r2', 0x40000000)
+            ),
+            'tests': (
+                ('r0', 0x40000000),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', 0x40800000),
+                ('r2', FSNS)
+            ),
+            'tests': (
+                ('r0', 0xff7fffff),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', FSNS),
+                ('r2', 0x40800000)
+            ),
+            'tests': (
+                ('r0', 0xff7fffff),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', FSPS),
+                ('r2', 0x40800000)
+            ),
+            'tests': (
+                ('r0', 0x7f7fffff),
+            )
+        },
+    ],
+
+    '100102c4': [ # efsabs r0,r1
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', n_1p1s),
+            ),
+            'tests': (
+                ('r0', _1p1s),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', n_2p2s),
+            ),
+            'tests': (
+                ('r0', _2p2s),
+            )
+        },
+    ],
+
+    '10040ad1': [ # efscfh r0,r1
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', 0x8123),
+            ),
+            'tests': (
+                ('r0', 0x80000000),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', 0x123),
+            ),
+            'tests': (
+                ('r0', 0x0),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', 0xc222),
+            ),
+            'tests': (
+                ('r0', 0xC0444000),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', 0x8823),
+            ),
+            'tests': (
+                ('r0', 0xb9046000),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', 0x8823),
+            ),
+            'tests': (
+                ('r0', 0xb9046000),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', FHPQ),
+                ('SPEFSCR_FINVE', 0)
+            ),
+            'tests': (
+                ('r0', 0x7f7fffff),
+                ('SPEFSCR_FINV', 1),
+
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', FHNQ),
+            ),
+            'tests': (
+                ('r0', 0xff7fffff),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x1234),
+                ('r1', FHPQ),
+                ('SPEFSCR_FGH', 1),
+                ('SPEFSCR_FXH', 1),
+                ('SPEFSCR_FG', 1),
+                ('SPEFSCR_FX', 1),
+                ('SPEFSCR_FINVE', 1),
+            ),
+            'tests': (
+                ('r0', 0x1234),
+                ('r1', FHPQ),
+                ('SPEFSCR_FGH', 0),
+                ('SPEFSCR_FXH', 0),
+                ('SPEFSCR_FG', 0),
+                ('SPEFSCR_FX', 0),
+                ('SPEFSCR_FINVE', 1),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', 0x8000),
+            ),
+            'tests': (
+                ('r0', 0x80000000),
+
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', FHNQ),
+                ('SPEFSCR_FINVE', 1),
+            ),
+            'tests': (
+                ('r0', 0),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', FHNQ),
+                ('SPEFSCR_FINVE', 0),
+            ),
+            'tests': (
+                ('r0', 0xff7fffff),
+            )
+        },
+    ],
+
+    '10000ad3': [ # efscfsf r0,r1 Does not match hardware 100%
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', 0x40900000),
+            ),
+            'tests': (
+                ('r0', 0x3F000000),  #hardware = 0x3f012000
+            )
+        },
+    ],
+
+    '100112c2': [ # efsmadd r0,r1, r2
+        {
+            'setup': (
+                ('r0', 0x3F800000),
+                ('r1', 0x40800000),
+                ('r2', 0x40800000)
+            ),
+            'tests': (
+                ('r0', 0x41880000),  #
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x3F800000),
+                ('r1', 0),
+                ('r2', 0x40800000)
+            ),
+            'tests': (
+                ('r0', 0x3F800000),  #
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', 0x0),
+                ('r2', 0x80000000)
+            ),
+            'tests': (
+                ('r0', 0x0),  #
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x12345678),
+                ('r1', 0x0),
+                ('r2', 0x0)
+            ),
+            'tests': (
+                ('r0', 0x12345678),  #
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x80002345),
+                ('r1', 0x0),
+                ('r2', 0x0)
+            ),
+            'tests': (
+                ('r0', 0),  #
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x40400000),
+                ('r1', 0x0),
+                ('r2', 0x0)
+            ),
+            'tests': (
+                ('r0', 0x40400000),  #
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x40400000),
+                ('r1', 0x80012345),
+                ('r2', 0x80012345),
+                ('SPEFSCR_FINV', 0)
+            ),
+            'tests': (
+                ('r0', 0),
+                ('SPEFSCR_FINV', 1)
+            )
+        },
+    ],
+
+    '100112c3': [ # efsmsub r0,r1, r2
+        {
+            'setup': (
+                ('r0', 0x3F800000),
+                ('r1', 0x40800000),
+                ('r2', 0x40800000)
+            ),
+            'tests': (
+                ('r0', 0x41700000),  #
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', 0x0),
+                ('r2', 0x80000000)
+            ),
+            'tests': (
+                ('r0', 0x0),  #
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x12345678),
+                ('r1', 0x0),
+                ('r2', 0x0)
+            ),
+            'tests': (
+                ('r0', 0x12345678),  #
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x80002345),
+                ('r1', 0x0),
+                ('r2', 0x0)
+            ),
+            'tests': (
+                ('r0', 0),  #
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x40400000),
+                ('r1', 0x0),
+                ('r2', 0x0)
+            ),
+            'tests': (
+                ('r0', 0x40400000),  #
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x40400000),
+                ('r1', 0x80012345),
+                ('r2', 0x80012345),
+                ('SPEFSCR_FINV', 0)
+            ),
+            'tests': (
+                ('r0', 0),
+                ('SPEFSCR_FINV', 1)
+            )
+        },
+    ],
+
+    '100112c8': [ # efsmul r0,r1, r2
+        {
+            'setup': (
+                ('r0', 0x3F800000),
+                ('r1', 0x40800000),
+                ('r2', 0x40800000)
+            ),
+            'tests': (
+                ('r0', 0x41800000),  #
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', 0x0),
+                ('r2', 0x80000000)
+            ),
+            'tests': (
+                ('r0', 0x0),  #
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x12345678),
+                ('r1', 0x0),
+                ('r2', 0x0)
+            ),
+            'tests': (
+                ('r0', 0x0),  #
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x80002345),
+                ('r1', 0x0),
+                ('r2', 0x40800000)
+            ),
+            'tests': (
+                ('r0', 0),  #
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x40400000),
+                ('r1', _1p1s),
+                ('r2', 0x7F800001)   # positive NaN
+            ),
+            'tests': (
+                ('r0', 0x7F7FFFFF),  # max positive
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x40400000),
+                ('r1', 0x0),
+                ('r2', 0x7F800001)   # positive NaN
+            ),
+            'tests': (
+                ('r0', 0x00000000),  # zero
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x40400000),
+                ('r1', 0xFF800001),  # negative NaN
+                ('r2', _1p1s),
+            ),
+            'tests': (
+                ('r0', 0xFF7FFFFF),  # max negative
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x40400000),
+                ('r1', 0xFF800001),  # negative NaN
+                ('r2', 0x0),
+            ),
+            'tests': (
+                ('r0', 0x00000000),  # zero
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x40400000),
+                ('r1', _1p1s),
+                ('r2', 0x80000000),  # negative zero
+            ),
+            'tests': (
+                ('r0', 0x00000000),  # positive zero
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x40400000),
+                ('r1', _1p1s),
+                ('r2', 0x80012345),  # denormalized
+            ),
+            'tests': (
+                ('r0', 0),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x40400000),
+                ('r2', 0x00012345),  # denormalized
+                ('r1', n_1p1s),
+            ),
+            'tests': (
+                ('r0', 0),
+            )
+        },
+    ],
+
+    '100102c5': [ # efsnabs r0,r1 Does not match hardware 100%
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', 0xc0900000),
+            ),
+            'tests': (
+                ('r0', 0xc0900000),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', 0x40900000),
+            ),
+            'tests': (
+                ('r0', 0xc0900000),
+            )
+        },
+        {
+            'setup': (
+                ('r0', 0x0),
+                ('r1', FSPS),
+                ("SPEFSCR_FINV", 0),
+                ("SPEFSCR_FG", 1),
+                ("SPEFSCR_FX", 1),
+                ("SPEFSCR_FGH", 1),
+                ("SPEFSCR_FXH", 1),
+            ),
+            'tests': (
+                ('r0', FSNS),
+                ("SPEFSCR_FINV", 1),
+                ("SPEFSCR_FG", 0),
+                ("SPEFSCR_FX", 0),
+                ("SPEFSCR_FGH", 0),
+                ("SPEFSCR_FXH", 0),
+            )
+        },
+    ],
+
 }
 
 

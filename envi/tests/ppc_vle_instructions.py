@@ -1,7 +1,6 @@
 # va = 0x40004560
 # psize = 4
 instructions = [
-	('0000', 'se_illegal'),
 	('0001', 'se_isync'),
 	('0002', 'se_sc'),
 	('0004', 'se_blr'),
@@ -1331,7 +1330,7 @@ instructions = [
 	('42E0', 'se_slw r0,r30'),
 	('42F0', 'se_slw r0,r31'),
 	('42F7', 'se_slw r7,r31'),
-	('4400', 'se_or r0,r0'),
+	('4400', 'se_nop'),
 	('4403', 'se_or r3,r0'),
 	('4404', 'se_or r4,r0'),
 	('4405', 'se_or r5,r0'),
@@ -31914,7 +31913,7 @@ instructions = [
 	('7C00F230', 'e_rlw r0,r0,r30'),
 	('7C00FA78', 'xor r0,r0,r31'),
 	('7C00FB96', 'divwu r0,r0,r31'),
-	('7C0102A6', 'mfspr r0,xer'),
+	('7C0102A6', 'mfspr r0,XER'),
 	('7C0103A6', 'mtspr XER,r0'),
 	('7C030034', 'cntlzw r3,r0'),
 	('7C0300AE', 'lbzx r0,r3,r0'),
@@ -32292,7 +32291,7 @@ instructions = [
 	('7C60D1D6', 'mullw r3,r0,r26'),
 	('7C60D9D6', 'mullw r3,r0,r27'),
 	('7C60F09E', 'iseleq r3,0x0,r30'),
-	('7C6102A6', 'mfspr r3,xer'),
+	('7C6102A6', 'mfspr r3,XER'),
 	('7C630034', 'cntlzw r3,r3'),
 	('7C63009E', 'iseleq r3,r3,r0'),
 	('7C63022E', 'lhzx r3,r3,r0'),

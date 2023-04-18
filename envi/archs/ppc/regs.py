@@ -4,21 +4,33 @@ Home of the PowerPC module's register specs/code.
 """
 import envi.registers as e_reg
 
-gprs32 = [('r%s' % x, 32)  for x in range(32)]
-gprs64 = [('r%s' % x, 64)  for x in range(32)]
-floats = [('f%s' % x, 64)  for x in range(32)]
-floats.append( ('FPSCR', 64) )
-vectors = [('vr%s' % x, 128)  for x in range(64)]
-vectors.append( ('VSCR', 32) )
+
+# General purpose registers
+gprs32 = [('r%d' % x, 32)  for x in range(32)]
+gprs64 = [('r%d' % x, 64)  for x in range(32)]
+
+floats = [('f%d' % x, 64)  for x in range(32)]
+
+vectors = [('v%d' % x, 128)  for x in range(32)]
+
+# Special control registers that are not SPRs
+floats.append(('fpscr', 64))
+
+vectors.append(('vscr', 32))
+
+spes = (
+    ('acc', 64),
+)
 
 sysregs = (
-        ('acc', 64),
-        ('cr', 64),
-        ('msr', 64),
-        ('ten', 64),
-        ('SPEFSCR', 64),
-        ('pc', 64),
-        )
+    ('pc', 64),
+    ('msr', 32),
+    ('cr', 32),
+)
+
+hypervisors = (
+    ('TEN', 64),
+)
 
 ppc_regs32 = []
 ppc_regs = ppc_regs64 = []
@@ -38,13 +50,21 @@ REG_OFFSET_VECTOR = len(ppc_regs)
 ppc_regs64.extend(vectors)
 ppc_regs32.extend(vectors)
 
+REG_OFFSET_SPE = len(ppc_regs)
+ppc_regs64.extend(spes)
+ppc_regs32.extend(spes)
+
+REG_OFFSET_HYPERVISOR = len(ppc_regs)
+ppc_regs64.extend(hypervisors)
+ppc_regs32.extend(hypervisors)
+
 from . import spr
 # populate spr_regs from the PPC SPR register list (in spr.py)
 spr_regs = [('%#x' % x, 64) for x in range(1024)]
 for sprnum, (rname, rdesc, bitsz) in spr.sprs.items():
     spr_regs[sprnum] = (rname, bitsz)
 
-sprnames = {x:y.lower() for x,(y,z,b) in spr.sprs.items()}
+sprnames = {x:y for x,(y,z,b) in spr.sprs.items()}
 
 REG_OFFSET_SPR = len(ppc_regs)
 ppc_regs64.extend(spr_regs)
@@ -52,11 +72,11 @@ ppc_regs32.extend(spr_regs)
 
 # sparse definition of TMR regs, so we fill in the gaps a bit
 tmr_regs = [("TMRREG%d" % x, 64) for x in range(192) ]
-tmr_regs[16] = ('tmcfg0', 64)
+tmr_regs[16] = ('TMCFG0', 64)
 
-tpri_regs = [('tpri%d' % x, 64) for x in range(32)]
-imsr_regs = [('imsr%d' % x, 64) for x in range(32)]
-inia_regs = [('inia%d' % x, 64) for x in range(32)]
+tpri_regs = [('TPRI%d' % x, 64) for x in range(32)]
+imsr_regs = [('IMSR%d' % x, 64) for x in range(32)]
+inia_regs = [('INIA%d' % x, 64) for x in range(32)]
 tmr_regs.extend(tpri_regs)
 tmr_regs.extend([("TPRIREG%d" % x, 64) for x in range(224, 288) ])   # padding
 tmr_regs.extend(imsr_regs)
@@ -67,33 +87,64 @@ ppc_regs64.extend(tmr_regs)
 ppc_regs32.extend(tmr_regs)
 
 
+dcr_regs = [('DCR%d' % x, 32) for x in range(1024)]
+
+# Some DCR registers have specific names
+dcr_regs[272] = ('PSCR', 32)
+dcr_regs[273] = ('PSSR', 32)
+dcr_regs[274] = ('PSHR', 32)
+dcr_regs[275] = ('PSLR', 32)
+dcr_regs[276] = ('PSCTR', 32)
+dcr_regs[277] = ('PSUHR', 32)
+dcr_regs[278] = ('PSULR', 32)
+dcr_regs[351] = ('DCACNTL', 32)
+dcr_regs[352] = ('DCACNTA', 32)
+
 REG_OFFSET_DCR = len(ppc_regs)
-ppc_regs64.extend([('dcr%d' % x, 64) for x in range(1024)])
-ppc_regs32.extend([('dcr%d' % x, 64) for x in range(1024)])
+ppc_regs64.extend(dcr_regs)
+ppc_regs32.extend(dcr_regs)
 
 
-pmr_regs = []
-pmr_regs.extend([('upmc%d' % x, 32) for x in range(16)])
-pmr_regs.extend([('pmc%d' % x, 32) for x in range(16)])
-pmr_regs.extend([('foo%d' % x, 32) for x in range(96)])
-pmr_regs.extend([('upmlca%d' % x, 32) for x in range(16)])
-pmr_regs.extend([('pmlca%d' % x, 32) for x in range(16)])
-pmr_regs.extend([('bar%d' % x, 32) for x in range(96)])
-pmr_regs.extend([('upmlcb%d' % x, 32) for x in range(16)])
-pmr_regs.extend([('pmlcb%d' % x, 32) for x in range(16)])
-pmr_regs.extend([('baz%d' % x, 32) for x in range(96)])
-pmr_regs.append(('upmgc0', 64))
-pmr_regs.extend([('fuq%d' % x, 32) for x in range(15)])
-pmr_regs.append(('pmgc0', 64))
+pmr_regs = [('PMR%d' % x, 32) for x in range(1024)]
+
+# Some PMR registers have specific names
+
+UPMCn_OFFSET = 0
+for i in range(16):
+    pmr_regs[UPMCn_OFFSET + i] = ('UPMC%d' % i, 32)
+
+PMCn_OFFSET = 16
+for i in range(16):
+    pmr_regs[PMCn_OFFSET + i] = ('PMC%d' % i, 32)
+
+UPMLCAn_OFFSET = 128
+for i in range(16):
+    pmr_regs[UPMLCAn_OFFSET + i] = ('UPMLCA%d' % i, 32)
+
+PMLCAn_OFFSET = 144
+for i in range(16):
+    pmr_regs[PMLCAn_OFFSET + i] = ('PMLCA%d' % i, 32)
+
+UPMLCBn_OFFSET = 256
+for i in range(16):
+    pmr_regs[UPMLCBn_OFFSET + i] = ('UPMLCB%d' % i, 32)
+
+PMLCBn_OFFSET = 272
+for i in range(16):
+    pmr_regs[PMLCBn_OFFSET + i] = ('PMLCB%d' % i, 32)
+
+pmr_regs[384] = ('UPMGC0', 32)
+pmr_regs[400] = ('PMGC0', 32)
 
 REG_OFFSET_PMR = len(ppc_regs)
 ppc_regs64.extend(pmr_regs)
 ppc_regs32.extend(pmr_regs)
 
-#REG_OFFSET_TBR = len(ppc_regs)
+
+# The TBRs are just SPRs
 REG_OFFSET_TBR = REG_OFFSET_SPR
 
-# dynamically create REG_EAX and the like in our module
+
 l = locals()
 e_reg.addLocalEnums(l, ppc_regs)
 
@@ -113,6 +164,7 @@ ppc_meta32 = [
         ('SO',  REG_XER, 63-32, 1),
         ('OV',  REG_XER, 63-33, 1),
         ('CA',  REG_XER, 63-34, 1),
+        ('TBL', REG_TB, 0, 32),
 ]
 ppc_meta64 = [
         ('SP', REG_R1, 0, 64),
@@ -128,14 +180,25 @@ ppc_meta64 = [
         ('SO',  REG_XER, 63-32, 1),
         ('OV',  REG_XER, 63-33, 1),
         ('CA',  REG_XER, 63-34, 1),
+        ('TBL', REG_TB, 0, 32),
 ]
 
-vec_meta = [('v%d' % d, REG_OFFSET_VECTOR + d, 0, 128) for d in range(32)]
-spe_meta = [('ev%d' % d, d, 0, 64) for d in range(32)]
-spe_meta.extend([('ev%dh', d, 32, 32) for d in range(32)])   # upper half
+# GDB expects vr0-vr31 as the vector registers, but asm listings usually use the 
+# "standard" v0-v31 register names.
+vec_meta = [('vr%d' % d, REG_V0 + d, 0, 128) for d in range(32)]
+
+# GDB sometimes uses vs0h-vs31h (the "VSX" feature) for the upper half of the 
+# vector registers
+vec_meta.extend([('vs%dh' % d, REG_V0 + d, 64, 64) for d in range(32)])
+
+# VRSAVE is an alias for USPRG0
+vec_meta.append(('vrsave', REG_USPRG0, 0, 64))
 
 ppc_meta32.extend(vec_meta)
 ppc_meta64.extend(vec_meta)
+
+spe_meta = [('ev%d' % d, d, 0, 64) for d in range(32)]
+spe_meta.extend([('ev%dh' % d, d, 32, 32) for d in range(32)])   # upper half
 
 ppc_meta32.extend(spe_meta)
 ppc_meta64.extend(spe_meta)
@@ -247,6 +310,7 @@ statmetas = [
         ('SPEFSCR_FDBZS', REG_SPEFSCR, 63-44, 1, 'Embedded Floating-Point Divide By Zero Sticky Flag'),
         ('SPEFSCR_FUNFS', REG_SPEFSCR, 63-45, 1, 'Embedded Floating-Point Underflow Sticky Flag'),
         ('SPEFSCR_FOVFS', REG_SPEFSCR, 63-46, 1, 'Embedded Floating-Point Overflow Sticky Flag'),
+        ('SPEFSCR_MODE',  REG_SPEFSCR, 63-47, 1, 'Embedded Floating-Point Operating Mode'),
         ('SPEFSCR_SOV',   REG_SPEFSCR, 63-48, 1, 'Summary Integer Overflow High'),
         ('SPEFSCR_OV',    REG_SPEFSCR, 63-49, 1, 'Integer Overflow High'),
         ('SPEFSCR_FG',    REG_SPEFSCR, 63-50, 1, 'Embedded Floating-Point Guard Bit Low'),
@@ -256,18 +320,12 @@ statmetas = [
         ('SPEFSCR_FUNF',  REG_SPEFSCR, 63-54, 1, 'Embedded Floating-Point Underflow Low'),
         ('SPEFSCR_FOVF',  REG_SPEFSCR, 63-55, 1, 'Embedded Floating-Point Overflow Low'),
         ('SPEFSCR_FINXE', REG_SPEFSCR, 63-57, 1, 'Embedded Floating-Point Round (Inexact) Exception Enable'),
-        ('SPEFSCR_FINVS', REG_SPEFSCR, 63-58, 1, 'Embedded Floating-Point Invalid Operation Exception Enable'),
-        ('SPEFSCR_FDBZS', REG_SPEFSCR, 63-59, 1, 'Embedded Floating-Point Divide By Zero Exception Enable'),
-        ('SPEFSCR_FUNFS', REG_SPEFSCR, 63-60, 1, 'Embedded Floating-Point Underflow Exception Enable'),
-        ('SPEFSCR_FOVFS', REG_SPEFSCR, 63-61, 1, 'Embedded Floating-Point Overflow Exception Enable'),
+        ('SPEFSCR_FINVE', REG_SPEFSCR, 63-58, 1, 'Embedded Floating-Point Invalid Operation Exception Enable'),
+        ('SPEFSCR_FDBZE', REG_SPEFSCR, 63-59, 1, 'Embedded Floating-Point Divide By Zero Exception Enable'),
+        ('SPEFSCR_FUNFE', REG_SPEFSCR, 63-60, 1, 'Embedded Floating-Point Underflow Exception Enable'),
+        ('SPEFSCR_FOVFE', REG_SPEFSCR, 63-61, 1, 'Embedded Floating-Point Overflow Exception Enable'),
         ('SPEFSCR_FRMC',  REG_SPEFSCR, 63-62, 2, 'Embedded Floating-Point Rounding Mode Control'),
 ]
-
-def getCrFields(regval):
-    ret = []
-    for name,regval,shift,bits,desc in statmetas:
-        ret.append( (name, regval >> shift & 1) )
-    return ret
 
 e_reg.addLocalStatusMetas(l, ppc_meta64, statmetas, 'EFLAGS')
 e_reg.addLocalMetas(l, ppc_meta64)
@@ -290,37 +348,32 @@ class Ppc64RegisterContext(e_reg.RegisterContext):
 
 regs_general = []
 regs_general.extend([reg for reg, size in gprs64])
-#regs_general.extend([reg for reg, size in floats])
-#regs_general.extend([reg for reg, size in vectors])
-regs_general.append('lr')
-regs_general.append('xer')
-regs_general.append('ctr')
-regs_general.extend([reg for reg, size in sysregs])
 
-regs_core = []
-regs_core.extend([reg for reg, size in gprs64])
-regs_core.append('pc')
-regs_core.append('msr')
-regs_core.append('cr')
-regs_core.append('lr')
-regs_core.append('ctr')
-regs_core.append('xer')
+# The general registers also need a few system and special registers
+regs_general.extend([reg for reg, size in sysregs])
+regs_general.append('lr')
+regs_general.append('ctr')
+regs_general.append('xer')
 
 regs_fpu = ['f%d' %x for x in range(32)]
 regs_fpu.append('fpscr')
 
+# GDB expects the vector registers to be named vr0-vr31
 regs_altivec = ['vr%d' %x for x in range(64)]
 regs_altivec.append('vscr')
 regs_altivec.append('vrsave')
 
+# The upper half of the vector registers is part of the "VSX" feature in GDB
+regs_vsx = ['vs%dh' %x for x in range(32)]
+
 regs_spe = ['ev%dh' %x for x in range(32)]
+regs_spe.extend([reg for reg, size in sysregs])
 regs_spe.append('acc')
 regs_spe.append('spefscr')
 
-regs_spr = [name for idx, (name, desc, bitsize) in spr.sprs.items()]
-
+# Drop any "write only" SPRs from this group
+regs_spr = [name for idx, (name, desc, bitsize) in spr.sprs.items() \
+        if not name.endswith('_WO')]
 
 rctx32 = Ppc32RegisterContext()
 rctx64 = Ppc64RegisterContext()
-
-
