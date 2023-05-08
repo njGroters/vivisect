@@ -750,6 +750,11 @@ class Elf(vs_elf.Elf32, vs_elf.Elf64):
             if b'FreeBSD' in self.readAtOffset(sec.sh_offset, sec.sh_size):
                 return 'freebsd'
 
+        if self.getSection('.comment'):
+            sec = self.getSection('.comment')
+            if b'FreeBSD' in self.readAtOffset(sec.sh_offset, sec.sh_size):
+                return 'freebsd'
+
         if self.getSection('QNX_info'):
             return 'qnx'
 
