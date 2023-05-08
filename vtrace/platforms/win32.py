@@ -1219,9 +1219,6 @@ class WindowsMixin:
     """
 
     def __init__(self):
-        # Enable SeDebugPrivilege on Windows
-        import vtrace.platforms.win_sedebug as win_sedebug
-        win_sedebug.enable_privs()
 
         self.casesens = False
 
