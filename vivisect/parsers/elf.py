@@ -227,6 +227,7 @@ arch_names = {
     Elf.EM_PPC64: 'ppc-server',
     Elf.EM_ARM_AARCH64: 'aarch64',
     Elf.EM_RISCV: {32: 'rv32', 64: 'rv64'},
+    Elf.EM_ARM_A64: 'a64',
 }
 
 ppc_arch_names = (
@@ -267,6 +268,7 @@ archcalls = {
     # 64-bit architectures
     'rv32': 'ilp32d',
     'rv64': 'lp64d',
+    'a64': 'a64call',
 }
 
 def getAddBaseAddr(elf, baseaddr=None):
