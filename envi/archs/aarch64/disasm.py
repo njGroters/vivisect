@@ -13,7 +13,8 @@ import envi.bits as e_bits
 All the various tables inittable references
 '''
 s_0_table = (   # undefined and unallcated
-    (0b11111111111111110000000000000000, 0b00000000000000000000000000000000, IENC_RESERVED),
+    (0b10011110000000000000000000000000, 0b10000000000000000000000000000000, IENC_SME),
+    (0b10011110000000000000000000000000, 0b00000000000000000000000000000000, IENC_RESERVED),
     (0,0,IENC_UNDEF),#catch-all
 )
 
@@ -153,7 +154,7 @@ def p_pc_addr(opval, va):
 
     olist = (
         A64RegOper(rd, va=va, size=8),
-        A64ImmOper(base + imm)
+        A64ImmOper(base + imm),
     )
 
 
@@ -171,6 +172,7 @@ def p_addsub_imm(opval, va):
     rn = opval >> 5 & 0x1f
     rd = opval & 0x1f
     imm = opval >> 10 & 0xfff
+
     #all mnemonics are either add or sub, depending on op's value
     if op == 0b0:
         mnem = 'add'
@@ -178,17 +180,20 @@ def p_addsub_imm(opval, va):
     else:
         mnem = 'sub'
         opcode = INS_SUB
+
     #if the value of s is 1, then the iflag should be set to PSR_S, becoming adds or subs
     if s == 0b0:
         iflag = 0
     else:
         iflag |= IF_PSR_S
+
     #if shift's value is 01, set shift amount to 12. else, shift is either
         #explicitly assigned to 0 (shift = 00) or defaults to 0 (shift = 1x)
     if shift == 0b01:
         shiftX = 12
     else:
         shiftX = 0
+
     #sf determines whether the register size corresponds to the 32 or 64-bit variant
     if sf == 0b0:
         size = 4
@@ -196,10 +201,21 @@ def p_addsub_imm(opval, va):
         rn += meta_reg_bases[size]
     else:
         size = 8
+
+    if imm == iflag ==  0:
+        # this is a mov
+        mnem = 'mov'
+        opcode = INS_MOV
+        olist = (
+            A64RegOper(rd, va=va, size=size),
+            A64RegOper(rn, va=va, size=size),
+        )
+        return opcode, mnem, olist, iflag, 0
+
     olist = (
         A64RegOper(rd, va=va, size=size),
         A64RegOper(rn, va=va, size=size),
-        A64ImmOper(imm, shiftX, S_LSL, va)
+        A64ImmOper(imm, shiftX, S_LSL, va),
     )        
     return opcode, mnem, olist, iflag, 0
 
@@ -210,12 +226,24 @@ def p_log_imm(opval, va):
     iflags = 0
     sf = opval >> 31
     opc = opval >> 29 & 0x3
-    n = opval >> 22
+    n = opval >> 10 & 0x1000    # 22 bits, but left in place
     immr = opval >> 16 & 0x3f
-    imms = opval >> 10 & 0x3f
+    imms = opval >> 4 & 0xfc0   # 10 bits, but left in place
     rn = opval >> 5 & 0x1f
     rd = opval & 0x1f
 
+
+    #sf and n determine whether the register size corresponds to the 32 or 64-bit variant
+    if sf == 0b0 and n == 0b0:
+        size = 4
+        rd += meta_reg_bases[size]
+        rn += meta_reg_bases[size]
+        imm = imms + immr
+    elif sf == 0b1:
+        size = 8
+        imm = n + imms + immr
+    else:
+        return p_undef(opval, va)
 
     #depending on whether opc is equal to 0, 1, 2, or 3, mnem is set to and, orr, eor, or ands
     if opc == 0x00:
@@ -228,24 +256,24 @@ def p_log_imm(opval, va):
         mnem = 'eor'
         opcode = INS_EOR
     else:
+        if rd == 0x1f:  # the ZR
+            # alias
+            mnem = 'tst'
+            opcode = INS_TST
+            olist = (
+                A64RegOper(rn, va, size=size),
+                A64ImmOper(imm, 0, S_LSL, va),
+            )
+            return opcode, mnem, olist, 0, 0
+
         mnem = 'and'
         opcode = INS_AND
         iflags = IF_PSR_S
 
-    #sf and n determine whether the register size corresponds to the 32 or 64-bit variant
-    if sf == 0b0 and n == 0b0:
-        size = 4
-        rd += meta_reg_bases[size]
-        rn += meta_reg_bases[size]
-    elif sf == 0b1:
-        size = 8
-    else:
-        return p_undef(opval, va)
-
     olist = (
         A64RegOper(rn, va, size=size),
         A64RegOper(rd, va, size=size),
-        A64ImmOper((n + imms + immr), 0, S_LSL, va),
+        A64ImmOper(imm, 0, S_LSL, va),
     )
     
     return opcode, mnem, olist, iflags, 0
@@ -361,8 +389,8 @@ def p_branch_uncond_imm(opval, va):
     Get the parameters for an A64Opcode for a Branch Unconditional (immediate) instruction
     '''
     op = opval >> 31
-    imm26 = opval & 0x3ffffff
-    imm26 = e_bits.bsign_extend(imm26, 26, 32)
+    imm26 = (opval & 0x3ffffff) << 2
+    imm26 = e_bits.signed(e_bits.bsign_extend(imm26, 28, 64), 8)
 
     #determines mnemonic
     if op == 0:
@@ -373,7 +401,7 @@ def p_branch_uncond_imm(opval, va):
         opcode = INS_BL
         
     olist = (
-        A64ImmOper((imm26*0b100) + va, va=va),
+        A64BranchOper(imm26, va=va),
     )
 
     return opcode, mnem, olist, 0, 0
@@ -384,8 +412,10 @@ def p_cmp_branch_imm(opval, va):
     '''
     sf = opval >> 31
     op = opval >> 24 & 0x1
-    imm19 = opval >> 5 & 0x7ffff
     rt = opval & 0x1f
+    imm19 = opval >> 3 & 0x1ffffc
+    imm19 = e_bits.bsign_extend(imm19, 19, 64)
+    imm19 = e_bits.signed(imm19, 8)
 
     #mnem is determined based on op, variant is determined based on sf
     if op == 0:
@@ -394,14 +424,16 @@ def p_cmp_branch_imm(opval, va):
     else:
         mnem = 'cbnz'
         opcode = INS_CBNZ
+
     if sf == 0b0:
         size = 4
         rt += meta_reg_bases[size]
     else:
         size = 8
+
     olist = (
         A64RegOper(rt, va, size=size),
-        A64ImmOper(imm19*0b100, 0, S_LSL, va),
+        A64BranchOper(imm19, va),
     )
 
     return opcode, mnem, olist, 0, 0
@@ -440,15 +472,14 @@ def p_branch_cond_imm(opval, va):
     '''
     Conditional branch (immediate) instruction
     '''
+    iflag = envi.IF_COND | envi.IF_BRANCH
     imm19 = opval >> 5 & 0x7ffff
     cond = opval & 0xf
-    mnem = 'B.'
-    opcode = INS_BCC
+    mnem, opcode = b_cond_table[cond]
     olist = (
-        A64CondOper(cond),
-        A64ImmOper(imm19*0x100, va=va),
+        A64ImmOper(imm19<<2, va=va),
     )
-    return opcode, mnem, olist, 0, 0
+    return opcode, mnem, olist, iflag, 0
 
 def p_excp_gen(opval, va):
     '''
@@ -502,6 +533,21 @@ def p_excp_gen(opval, va):
     
     return (opcode, mnem, olist, 0, 0)
 
+def p_sme(opval, va):
+    '''
+    Returns parameters for an A64Opcode for SME instructions
+    '''
+    op0 = opval >> 29 & 0x3
+    op1 = opval >> 10 & 0x7fff
+    op2 = opval >> 2 & 0x7
+
+    crn = opval >> 12 & 0xf
+    crm = opval >> 8 & 0xf
+    rt = opval & 0x1f
+    raise envi.InvalidInstruction(mesg="No encoding found! (unimplemented) (SME)",
+            bytez=struct.pack("<I", opval), va=va)
+    return opcode, mnem, olist, iflag, 0
+
 def p_sys(opval, va):
     '''
     Returns parameters for an A64Opcode for a system instruction
@@ -511,14 +557,15 @@ def p_sys(opval, va):
     op1 = opval >> 16 & 0x7
     crn = opval >> 12 & 0xf
     crm = opval >> 8 & 0xf
-    op2 = opval >> 5 & 0x3
+    op2 = opval >> 5 & 0x7
     rt = opval & 0x1f
     relevant = opval & 0x3fffff
 
     #this is legitimately ugly as sin. hopefully can come back and fix, though
     #since it has 6 relevant decode fields, it won't be that improvable
+    ## FIXME:  clean up LinuxKernel-based unittests, then revisit this if not filled in.
 
-    if relevant & 0b1110001111000000011111 == 0b0000000100000000011111:
+    if relevant & 0b111000_11110000_00011111 == 0b000000_01000000_00011111:
         opcode = INS_MSR
         mnem = 'msr'
         olist = (
@@ -527,19 +574,61 @@ def p_sys(opval, va):
         )
         iflag = 0
         
-    elif relevant & 0b1111111111000000011111 == 0b00001100100000000011111:
-        opcode = INS_HINT
-        mnem = 'hint'
-        olist = (
-            A64ImmOper(crm + op2, 0, S_LSL, va)
-        )
+    elif relevant & 0b111111_11110000_00011111 == 0b000011_00100000_00011111:
         iflag = 0
+        if crm == 0:
+            if op2 == 0:
+                opcode = INS_NOP
+                mnem = 'nop'
+                olist = tuple()
+            elif op2 == 1:
+                opcode = INS_YIELD
+                mnem = 'yield'
+                olist = tuple()
+
+            elif op2 == 2:
+                opcode = INS_WFE
+                mnem = 'wfe'
+                olist = tuple()
+
+            elif op2 == 3:
+                opcode = INS_WFI
+                mnem = 'wfi'
+                olist = tuple()
+
+            elif op2 == 4:
+                opcode = INS_SEV
+                mnem = 'sev'
+                olist = tuple()
+
+            elif op2 == 5:
+                opcode = INS_SEVL
+                mnem = 'sevl'
+                olist = tuple()
+
+            elif op2 == 6:
+                opcode = INS_DGH
+                mnem = 'dgh'
+                olist = tuple()
+
+            elif op2 == 7:
+                # xpacd, xpaci, xpaclri
+                opcode = INS_XPACLRI
+                mnem = 'xpaclri'
+                olist = tuple()
+
+        else:
+            opcode = INS_HINT
+            mnem = 'hint'
+            olist = (
+                A64ImmOper(crm + op2, 0, S_LSL, va),
+            )
         
-    elif relevant & 0b1111111111000011111111 == 0b00001100110000001011111:
+    elif relevant & 0b111111_11110000_11111111 == 0b000011_00110000_01011111:
         opcode = INS_CLREX
         mnem = 'clrex'
         olist = (
-            A64ImmOper(crm, 0, S_LSL, va)
+            A64ImmOper(crm, 0, S_LSL, va),
         )
         iflag = 0
         
@@ -897,51 +986,57 @@ def p_ls_regpair(opval, va):
     Load/store register pair (pre-indexed, post-indexed or offset)
     '''
     opc = opval >> 30 & 0x3
-    v = opval >> 26 & 0x1
+    v = opval >> 26 & 0x1   # vector?  SIMD/FP
     l = opval >> 22 & 0x1
     imm7 = opval >> 15 & 0x7f
     rt2 = opval >> 10 & 0x1f
     rn = opval >> 5 & 0x1f
     rt = opval & 0x1f
+    mode = opval >> 23 & 0x3
 
     vl = v + l
-    if opc == 0b00: #32-bit variant
+    if opc == 0b00:
+        #32-bit variant ls_regpair
         mnem, opcode = ls_regpair_table[vl]
+        imm = e_bits.bsigned(imm7 << 2, 9)
         olist = (
             A64RegOper(rt, va, size=4),
             A64RegOper(rt2,va, size=4),
-            A64RegOper(rn, va, size=8),
-            A64ImmOper(imm7*0b100, va=va),
+            A64RegImmOffOper(rn, imm, tsize=8, mode=mode, va=va),
         )
     elif opc == 0b01:
+        # ldpsw and SIMD/FP
         if vl == 0b00:
             return p_undef(opval, va)
         elif vl == 0b01:
             mnem = 'ldpsw'
             opcode = INS_LDPSW
-            imm = imm7*0b100
+            imm = e_bits.bsigned(imm7 << 2, 9)
         else:
-            mnem, opcode = ls_regpair_table[VL]
-            imm = imm7*0b1000
+            # 64-bit?
+            mnem, opcode = ls_regpair_table[vl]
+            imm = e_bits.bsigned(imm7 << 3, 10)
+
         olist = (
             A64RegOper(rt, va, size=8),
             A64RegOper(rt2,va, size=8),
-            A64RegOper(rn, va, size=8),
-            A64ImmOper(imm, va),
-        )            
+            A64RegImmOffOper(rn, imm, tsize=8, mode=mode, va=va),
+        )   
+
     elif opc == 0b10:
+        # 64-bit variant ls_regpair
         mnem, opcode = ls_regpair_table[vl]
         if v == 0b0:
             regsize = 8
-            imm = imm7*0b1000
+            imm = e_bits.bsigned(imm7 << 3, 10)
         else:
             regsize = 16
-            imm = imm7*0b10000
+            imm = e_bits.bsigned(imm7 << 4, 11)
+
         olist = (
             A64RegOper(rt, va, size=regsize),
             A64RegOper(rt2, va, size=regsize),
-            A64RegOper(rn, va, size=8),
-            A64ImmOper(imm, va=va),
+            A64RegImmOffOper(rn, imm, tsize=8, mode=mode, va=va),
         )
     else:
         return p_undef(opval, va)
@@ -1019,7 +1114,7 @@ def p_ls_reg_unsc_imm(opval, va):
             )
         else:
             if size == 0b11:
-                mnem == 'prfum'
+                mnem = 'prfum'
                 opcode = INS_PRFUM
                 olist = (
                     A64PreFetchOper(rt>>3, (rt>>1)&3, rt&1),
@@ -1099,6 +1194,11 @@ def p_ls_reg_imm(opval, va):
     imm9 = opval >> 10 & 0x7fc
     rn = opval >> 5 & 0x1f
     rt = opval & 0x1f
+    isoff = opval >> 24 & 1
+    if isoff:
+        mode = LDST_MODE_OFFSET 
+    else:
+        mode = opval >> 10 & 0x3
 
     if v == 0b0:
         if opc == 0b00:
@@ -1115,13 +1215,17 @@ def p_ls_reg_imm(opval, va):
 
         if size == 0b00:
             iflag |= IF_B
+            regsize = 1     ### DOES THIS BREAK THINGS?
         elif size == 0b01:
             iflag |= IF_H
+            regsize = 2
 
         if opc == 0b10 or size == 0b11:
             regsize = 8
+
         else:
             regsize = 4
+        #print("va=%x: v=0, mnem=%r, iflag=0x%x, regsize=%d, size=%d, mode=0x%x" % (va, mnem, iflag, regsize, size, mode))
 
     else:
         if opc in (0b00, 0b10):
@@ -1145,14 +1249,15 @@ def p_ls_reg_imm(opval, va):
 
         else:
             regsize = 8
+        #print("va=%x: v=1, mnem=%r, iflag=0x%x, regsize=%d, size=%d, mode=0x%x" % (va, mnem, iflag, regsize, size, mode))
 
     olist = (
         A64RegOper(rt, va, size=regsize),
-        A64RegImmOffOper(rn, imm9, tsize=8, va=va), # mode?
+        A64RegImmOffOper(rn, imm9, tsize=8, mode=mode, va=va), # mode?
     )
 
     return opcode, mnem, olist, iflag, 0
-        
+
 
 
 def p_ls_reg_offset(opval, va):
@@ -1250,6 +1355,13 @@ def p_ls_reg_us_imm(opval, va):
     rn = opval >> 5 & 0x1f
     rt = opval & 0x1f
     tsize = 8
+
+    isoff = opval >> 24 & 1
+    if isoff:
+        mode = LDST_MODE_OFFSET 
+    else:
+        mode = opval >> 10 & 0x3
+
     if v == 0b0:
         if opc == 0b00:
             mnem = 'str'
@@ -1264,6 +1376,7 @@ def p_ls_reg_us_imm(opval, va):
                     A64ImmOper(imm12 << 3, va=va),
                 )
                 return opcode, mnem, olist, 0, 0
+
             else:
                 mnem = 'ldr'
                 opcode = INS_LDR
@@ -1284,9 +1397,11 @@ def p_ls_reg_us_imm(opval, va):
             regsize = 8
         else:
             regsize = 4
+
+        #print("va=%x: v=0, mnem=%r, iflag=0x%x, regsize=%d, size=%d, mode=0x%x" % (va, mnem, iflag, regsize, size, mode))
         olist = (
             A64RegOper(rt, va, size=regsize),
-            A64RegImmOffOper(rn, imm12 << size, tsize=tsize, va=va),
+            A64RegImmOffOper(rn, imm12 << size, tsize=tsize, mode=mode, va=va),
         )
         
     else:
@@ -1317,10 +1432,11 @@ def p_ls_reg_us_imm(opval, va):
             regsize = 8
             imm = imm12 << 3
 
-        print("imm=%x   imm12=%x" % (imm, imm12))
+        #print("imm=%x   imm12=%x" % (imm, imm12))
+        #print("va=%x: v=1, mnem=%r, iflag=0x%x, regsize=%d, size=%d, mode=0x%x" % (va, mnem, iflag, regsize, size, mode))
         olist = (
             A64RegOper(rt, va, size=regsize),
-            A64RegImmOffOper(rn, imm, tsize=tsize, va=va),
+            A64RegImmOffOper(rn, imm, tsize=tsize, mode=mode, va=va),
         )
 
     return opcode, mnem, olist, iflag, 0
@@ -1335,6 +1451,8 @@ def p_simd_ls_multistruct(opval, va):
     size = opval >> 10 & 0x3
     rn = opval >> 5 & 0x1f
     rt = opval & 0x1f
+    sizeq = size + q
+
     if opc == 0b0000 or opc == 0b0010:
         if l == 0b0:
             if opc == 0b0000:
@@ -1354,21 +1472,20 @@ def p_simd_ls_multistruct(opval, va):
                 mnem = 'ld1'
                 opcode = INS_LD1
                 version = 1
-        sizeq = size + q
         if opc & 0b0010 == 0b0000:
             olist = (
-                A64RegOper(rt, va, oflag=t_table[sizeq]),
-                A64RegOper((rt+1)%32, va, oflag=t_table[sizeq]),
-                A64RegOper((rt+2)%32, va, oflag=t_table[sizeq]),
-                A64RegOper((rt+3)%32, va, oflag=t_table[sizeq]),
+                A64RegOper(rt, va, oflags=t_table[sizeq]),
+                A64RegOper((rt+1)%32, va, oflags=t_table[sizeq]),
+                A64RegOper((rt+2)%32, va, oflags=t_table[sizeq]),
+                A64RegOper((rt+3)%32, va, oflags=t_table[sizeq]),
                 A64RegOper(rn, va, size=8),
             )
         else:
             olist = (
-                A64RegOper(rt, va, oflag=unreserved_t_table[sizeq]),
-                A64RegOper((rt+1)%32, va, oflag=unreserved_t_table[sizeq]),
-                A64RegOper((rt+2)%32, va, oflag=unreserved_t_table[sizeq]),
-                A64RegOper((rt+3)%32, va, oflag=unreserved_t_table[sizeq]),
+                A64RegOper(rt, va, oflags=unreserved_t_table[sizeq]),
+                A64RegOper((rt+1)%32, va, oflags=unreserved_t_table[sizeq]),
+                A64RegOper((rt+2)%32, va, oflags=unreserved_t_table[sizeq]),
+                A64RegOper((rt+3)%32, va, oflags=unreserved_t_table[sizeq]),
                 A64RegOper(rn, va, size=8),
             )
     elif opc == 0b0100 or opc == 0b0110:
@@ -1392,16 +1509,16 @@ def p_simd_ls_multistruct(opval, va):
                 version = 1
         if opc & 0b0010 == 0b0000:
             olist = (
-                A64RegOper(rt, va, oflag=t_table[sizeq]),
-                A64RegOper((rt+1)%32, va, oflag=t_table[sizeq]),
-                A64RegOper((rt+2)%32, va, oflag=t_table[sizeq]),
+                A64RegOper(rt, va, oflags=t_table[sizeq]),
+                A64RegOper((rt+1)%32, va, oflags=t_table[sizeq]),
+                A64RegOper((rt+2)%32, va, oflags=t_table[sizeq]),
                 A64RegOper(rn, va, size=8),
             )
         else:
             olist = (
-                A64RegOper(rt, va, oflag=unreserved_t_table[sizeq]),
-                A64RegOper((rt+1)%32, va, oflag=unreserved_t_table[sizeq]),
-                A64RegOper((rt+2)%32, va, oflag=unreserved_t_table[sizeq]),
+                A64RegOper(rt, va, oflags=unreserved_t_table[sizeq]),
+                A64RegOper((rt+1)%32, va, oflags=unreserved_t_table[sizeq]),
+                A64RegOper((rt+2)%32, va, oflags=unreserved_t_table[sizeq]),
                 A64RegOper(rn, va, size=8),
             )
     elif opc == 0b0111:
@@ -1414,7 +1531,7 @@ def p_simd_ls_multistruct(opval, va):
             opcode = INS_LD1
             version = 1
         olist = (
-            A64RegOper(rt, va, oflag=t_table[sizeq]),
+            A64RegOper(rt, va, oflags=t_table[sizeq]),
             A64RegOper(rn, va, size=8),
         )
 
@@ -1439,14 +1556,14 @@ def p_simd_ls_multistruct(opval, va):
                 version = 1
         if opc & 0b0010 == 0b0000:
             olist = (
-                A64RegOper(rt, va, oflag=t_table[sizeq]),
-                A64RegOper((rt+1)%32, va, oflag=t_table[sizeq]),
+                A64RegOper(rt, va, oflags=t_table[sizeq]),
+                A64RegOper((rt+1)%32, va, oflags=t_table[sizeq]),
                 A64RegOper(rn, va, size=8),
             )
         else:
             olist = (
-                A64RegOper(rt, va, oflag=unreserved_t_table[sizeq]),
-                A64RegOper((rt+1)%32, va, oflag=unreserved_t_table[sizeq]),
+                A64RegOper(rt, va, oflags=unreserved_t_table[sizeq]),
+                A64RegOper((rt+1)%32, va, oflags=unreserved_t_table[sizeq]),
                 A64RegOper(rn, va, size=8),
             )
     else:
@@ -1501,31 +1618,31 @@ def p_simd_ls_multistruct_posti(opval, va):
     if rm != 0b11111:
         if opc == 0b0000 or opc == 0b0010:
             olist = (
-                A64RegOper(rt, va, oflag=t),
-                A64RegOper((rt+1)%32, va, oflag=t),
-                A64RegOper((rt+2)%32, va, oflag=t),
-                A64RegOper((rt+3)%32, va, oflag=t),
+                A64RegOper(rt, va, oflags=t),
+                A64RegOper((rt+1)%32, va, oflags=t),
+                A64RegOper((rt+2)%32, va, oflags=t),
+                A64RegOper((rt+3)%32, va, oflags=t),
                 A64RegOper(rn, va, size=8),
                 A64RegOper(rm, va, size=8), #FIXME excluding XZR
             )
         elif opc == 0b0100 or opc == 0b0110:
             olist = (
-                A64RegOper(rt, va, oflag=t),
-                A64RegOper((rt+1)%32, va, oflag=t),
-                A64RegOper((rt+2)%32, va, oflag=t),
+                A64RegOper(rt, va, oflags=t),
+                A64RegOper((rt+1)%32, va, oflags=t),
+                A64RegOper((rt+2)%32, va, oflags=t),
                 A64RegOper(rn, va, size=8),
                 A64RegOper(rm, va, size=8), #FIXME excluding XZR
             )
         elif opc == 0b0111:
             olist = (
-                A64RegOper(rt, va, oflag=t),
+                A64RegOper(rt, va, oflags=t),
                 A64RegOper(rn, va, size=8),
                 A64RegOper(rm, va, size=8), #FIXME excluding XZR
             )
         elif opc == 0b1000 or opc == 0b1010:
             olist = (
-                A64RegOper(rt, va, oflag=t),
-                A64RegOper((rt+1)%32, va, oflag=t),
+                A64RegOper(rt, va, oflags=t),
+                A64RegOper((rt+1)%32, va, oflags=t),
                 A64RegOper(rn, va, size=8),
                 A64RegOper(rm, va, size=8), #FIXME excluding XZR
             )
@@ -1534,31 +1651,31 @@ def p_simd_ls_multistruct_posti(opval, va):
     else:
         if opc == 0b0000 or opc == 0b0010:
             olist = (
-                A64RegOper(rt, va, oflag=t),
-                A64RegOper((rt+1)%32, va, oflag=t),
-                A64RegOper((rt+2)%32, va, oflag=t),
-                A64RegOper((rt+3)%32, va, oflag=t),
+                A64RegOper(rt, va, oflags=t),
+                A64RegOper((rt+1)%32, va, oflags=t),
+                A64RegOper((rt+2)%32, va, oflags=t),
+                A64RegOper((rt+3)%32, va, oflags=t),
                 A64RegOper(rn, va, size=8),
                 A64ImmOper((0x32, 0x64)[q], va=va), #FIXME probably wrong
             )
         elif opc == 0b0100 or opc == 0b0110:
             olist = (
-                A64RegOper(rt, va, oflag=t),
-                A64RegOper((rt+1)%32, va, oflag=t),
-                A64RegOper((rt+2)%32, va, oflag=t),
+                A64RegOper(rt, va, oflags=t),
+                A64RegOper((rt+1)%32, va, oflags=t),
+                A64RegOper((rt+2)%32, va, oflags=t),
                 A64RegOper(rn, va, size=8),
                 A64ImmOper((0x24, 0x48)[q], va=va), #FIXME probably wrong
             )
         elif opc == 0b0111:
             olist = (
-                A64RegOper(rt, va, oflag=t),
+                A64RegOper(rt, va, oflags=t),
                 A64RegOper(rn, va, size=8),
                 A64ImmOper((0x16, 0x32)[q], va=va), #FIXME probably wrong
             )
         elif opc == 0b1000 or opc == 0b1010:
             olist = (
-                A64RegOper(rt, va, oflag=t),
-                A64RegOper((rt+1)%32, va, oflag=t),
+                A64RegOper(rt, va, oflags=t),
+                A64RegOper((rt+1)%32, va, oflags=t),
                 A64RegOper(rn, va, size=8),
                 A64ImmOper((0x8, 0x16)[q], va=va), #FIXME probably wrong
             )
@@ -2090,24 +2207,18 @@ def p_log_shft_reg(opval, va):
     opc = opval >> 29 & 0x3
     shift = opval >> 22 & 0x3
     n = opval >> 21 & 0x1
+
     rm = opval >> 16 & 0x1f
     imm6 = opval >> 10 & 0x3f
     rn = opval >> 5 & 0x1f
     rd = opval & 0x1f
-    if sf == 0b0:
-        olist = (
-            A64RegOper(rd, va, size=4),
-            A64RegOper(rn, va, size=4),
-            A64RegOper(rm, va, size=4),
-            #FIXME
-        )
-    else:
-        olist = (
-            A64RegOper(rd, va, size=8),
-            A64RegOper(rn, va, size=8),
-            A64RegOper(rm, va, size=8),
-            #FIXME
-        )
+
+    size = (4, 8)[sf]
+
+    #if rn == 0x1f:
+    #    # THIS IS THE ZERO REGISTER
+
+
     if opc == 0b00 or opc == 0b11:
         if n == 0b0:
             mnem = 'and'
@@ -2117,13 +2228,25 @@ def p_log_shft_reg(opval, va):
             opcode = INS_BIC
         if opc == 0b11:
             iflag |= IF_PSR_S
+
     elif opc == 0b01:
-        mnem = 'or'
+        # mov alias:
+        if shift == n == 0 and rn == 0x1f:
+            mnem = 'mov'
+            opcode = INS_MOV
+            olist = (
+                A64RegOper(rd, va, size=size),
+                A64RegOper(rm, va, size=size),
+            )
+            return opcode, mnem, olist, iflag, 0
+
+        mnem = 'or'            #FIXME!!!!!  this should be a table, not dividing orr/orn/etc with flags...  this is not a bad idea, and i give them full credit for creativity, but let's simplify this a bit.
         opcode = INS_OR
         if n == 0b0:
             iflag |= IF_R
         else:
             iflag |= IF_N
+
     else:
         mnem = 'eo'
         opcode = INS_EO
@@ -2131,6 +2254,12 @@ def p_log_shft_reg(opval, va):
             iflag |= IF_R
         else:
             iflag |= IF_N
+
+    olist = (
+        A64RegWithZROper(rd, va, size=size),
+        A64RegWithZROper(rn, va, size=size),
+        A64RegWithZROper(rm, va, size=size),
+    )
 
     return opcode, mnem, olist, iflag, 0
 
@@ -2643,10 +2772,17 @@ datasimdtable = (   # FIXME: Fascinating....
     (0xff3e0c00, 0x5e280800, IENC_CRYPTO_TWO_SHA), #p_crypto_two_sha
 )
 def p_data_simd(opval, va):
+    enc = None
     for mask,val,penc in datasimdtable:
         if (opval & mask) == val:
             enc = penc
             break
+
+    if enc is None:
+        raise envi.InvalidInstruction(mesg="No encoding found! (SIMD)",
+                bytez=struct.pack("<I", opval), va=va)
+
+            
     opcode, mnem, olist, flags, simdflags = ienc_parsers[enc](opval, va)
     return opcode, mnem, olist, flags, simdflags
 
@@ -2963,7 +3099,7 @@ def p_fp_dp1(opval, va):
             elif opc == 0b000111:
                 olist = (
                     #16 Register (rd)
-                    A64RegOper(rn, va, size=4)
+                    A64RegOper(rn, va, size=4),
                 )
             else:
                 olist = (
@@ -3678,6 +3814,7 @@ simd_three_diff_table = (
     
 )
 def p_simd_three_diff(opval, va):
+    iflags = 0
     q = opval >> 30 & 0x1
     u = opval >> 29 & 0x1
     size = opval >> 22 & 0x3
@@ -5079,13 +5216,13 @@ def p_simd_copy(opval, va):
                     width_spec1 = IFS_2D
             if imm4 & 0x1 == 0b0:
                 olist = (
-                    A64RegOper(rd, va, oflag=width_spec1),
+                    A64RegOper(rd, va, oflags=width_spec1),
                     A64RegOper(rn, va, size=width_spec2),
                     A64ImmOper(index, va=va),
                 )
             else:
                 olist = (
-                    A64RegOper(rd, va, oflag=width_spec1),
+                    A64RegOper(rd, va, oflags=width_spec1),
                     A64RegOper(rn, va, size=width_spec2),
                 )
         elif imm4 == 0b0011:
@@ -5180,7 +5317,7 @@ def p_simd_copy(opval, va):
             olist = (
                 A64RegOper(rd, va, size=regsize),
                 A64RegOper(rn, va, size=width_spec),
-                A64ImmOper(index, va)
+                A64ImmOper(index, va),
             )
     else:
         mnem = 'ins'
@@ -5269,8 +5406,8 @@ def p_simd_vector_ie(opval, va):
             vm = 'RESERVED'
             index = 'RESERVED'
         olist = (
-            A64RegOper(rd, va, oflag=ta),
-            A64RegOper(rn, va, oflag=tb),
+            A64RegOper(rd, va, oflags=ta),
+            A64RegOper(rn, va, oflags=tb),
             A64RegOper(vm, va, size=ts),
             A64ImmOper(index, va=va),
         )
@@ -5331,8 +5468,8 @@ def p_simd_vector_ie(opval, va):
                 else:
                     index = 'RESERVED'
         olist = (
-            A64RegOper(rd, va, oflag=t),
-            A64RegOper(rn, va, oflag=t),
+            A64RegOper(rd, va, oflags=t),
+            A64RegOper(rn, va, oflags=t),
             A64RegOper(vm, va, size=ts),
             A64ImmOper(index, va=va),
         )
@@ -5411,7 +5548,7 @@ def p_simd_mod_imm(opval, va):
                 else:
                     width_spec = IFS_8H
             olist = (
-                A64RegOper(rd, va, oflag=width_spec),
+                A64RegOper(rd, va, oflags=width_spec),
                 A64ImmOper(a+b+c+d+e+f+g+h, va=va),
                 #shift equal to mod_imm_table[shift] LSL
             )
@@ -5446,7 +5583,7 @@ def p_simd_mod_imm(opval, va):
             else:
                 width_spec = IFS_4S
             olist = (
-                A64RegOper(rd, va, oflag=width_spec),
+                A64RegOper(rd, va, oflags=width_spec),
                 A64ImmOper(a+b+c+d+e+f+g+h, va=va),
                 #shift amount MSL
             )
@@ -5470,7 +5607,7 @@ def p_simd_mod_imm(opval, va):
             iflag |= IF_I
             if op == 0b0:
                 olist = (
-                    A64RegOper(rd, va, oflag=(IFS_8B,IFS_16B)[q]),
+                    A64RegOper(rd, va, oflags=(IFS_8B,IFS_16B)[q]),
                     A64ImmOper(a+b+c+d+e+f+g+h, va=va),
                     #FIXME shift == 0x0
                 )
@@ -5482,7 +5619,7 @@ def p_simd_mod_imm(opval, va):
                     )
                 else:
                     olist = (
-                        A64RegOper(rd, va, oflag=IFS_2D),
+                        A64RegOper(rd, va, oflags=IFS_2D),
                         A64ImmOper(a+b+c+d+e+f+g+h, va=va),
                     ) 
     else:
@@ -5538,8 +5675,8 @@ def p_simd_shift_imm(opval, va):
             pass
             #FIXME see modified immediate?
         olist = (
-            A64RegOper(rd, va, oflag=width_spec),
-            A64RegOper(rn, va, oflag=width_spec),
+            A64RegOper(rd, va, oflags=width_spec),
+            A64RegOper(rn, va, oflags=width_spec),
             #FIXME shift = variable shift specified above
         )
         if u == 0b0:
@@ -5626,8 +5763,8 @@ def p_simd_shift_imm(opval, va):
             pass
             #FIXME see modified immediate?
         olist = (
-            A64RegOper(rd, va, oflag=width_spec),
-            A64RegOper(rn, va, oflag=width_spec),
+            A64RegOper(rd, va, oflags=width_spec),
+            A64RegOper(rn, va, oflags=width_spec),
             #FIXME shift = variable shift specified above
         )
     elif opc & 0b11000 == 0b10000:
@@ -5670,8 +5807,8 @@ def p_simd_shift_imm(opval, va):
             pass
         if opc & 0x4 == 0b00000:
             olist = (
-                A64RegOper(rd, va, oflag=width_spec),
-                A64RegOper(rn, va, oflag=width_spec2),
+                A64RegOper(rd, va, oflags=width_spec),
+                A64RegOper(rn, va, oflags=width_spec2),
                 #FIXME shift, variable shift specified above
             )
             mnem = 'shr'
@@ -5690,8 +5827,8 @@ def p_simd_shift_imm(opval, va):
                     iflag |= IF_U
         else:
             olist = (
-                A64RegOper(rd, va, oflag=width_spec2),
-                A64RegOper(rn, va, oflag=width_spec),
+                A64RegOper(rd, va, oflags=width_spec2),
+                A64RegOper(rn, va, oflags=width_spec),
                 #FIXME shift, variable shift specified above
             )
             mnem = 'shl'
@@ -5724,8 +5861,8 @@ def p_simd_shift_imm(opval, va):
             width_spec = 'RESERVED'
             fbits = 128 - (immh + immb)
         olist = (
-            A64RegOper(rd, va, oflag=width_spec),
-            A64RegOper(rn, va, oflag=width_spec),
+            A64RegOper(rd, va, oflags=width_spec),
+            A64RegOper(rn, va, oflags=width_spec),
             #FIXME fractional bits?
         )
         if opc & 0x7 == 0b100:
@@ -5773,33 +5910,33 @@ def p_simd_tbl_tbx(opval, va):
             regsize = '16B'
         if length == 0b00:
             olist = (
-                A64RegOper(rd, va, oflag=regsize),
-                A64RegOper(rn, va, oflag=IFS_16B),
-                A64RegOper(rm, va, oflag=regsize),
+                A64RegOper(rd, va, oflags=regsize),
+                A64RegOper(rn, va, oflags=IFS_16B),
+                A64RegOper(rm, va, oflags=regsize),
             )
         elif length == 0b01:
             olist = (
-                A64RegOper(rd, va, oflag=regsize),
-                A64RegOper(rn, va, oflag=IFS_16B),
-                A64RegOper((rn + 1) % 32, va, oflag=IFS_16B),
-                A64RegOper(rm, va, oflag=regsize),
+                A64RegOper(rd, va, oflags=regsize),
+                A64RegOper(rn, va, oflags=IFS_16B),
+                A64RegOper((rn + 1) % 32, va, oflags=IFS_16B),
+                A64RegOper(rm, va, oflags=regsize),
             )            
         elif length == 0b10:
             olist = (
-                A64RegOper(rd, va, oflag=regsize),
-                A64RegOper(rn, va, oflag=IFS_16B),
-                A64RegOper((rn + 1) % 32, va, oflag=IFS_16B),
-                A64RegOper((rn + 2) % 32, va, oflag=IFS_16B),
-                A64RegOper(rm, va, oflag=regsize),
+                A64RegOper(rd, va, oflags=regsize),
+                A64RegOper(rn, va, oflags=IFS_16B),
+                A64RegOper((rn + 1) % 32, va, oflags=IFS_16B),
+                A64RegOper((rn + 2) % 32, va, oflags=IFS_16B),
+                A64RegOper(rm, va, oflags=regsize),
             ) 
         else:
             olist = (
-                A64RegOper(rd, va, oflag=regsize),
-                A64RegOper(rn, va, oflag=IFS_16B),
-                A64RegOper((rn + 1) % 32, va, oflag=IFS_16B),
-                A64RegOper((rn + 2) % 32, va, oflag=IFS_16B),
-                A64RegOper((rn + 3) % 32, va, oflag=IFS_16B),
-                A64RegOper(rm, va, oflag=regsize),
+                A64RegOper(rd, va, oflags=regsize),
+                A64RegOper(rn, va, oflags=IFS_16B),
+                A64RegOper((rn + 1) % 32, va, oflags=IFS_16B),
+                A64RegOper((rn + 2) % 32, va, oflags=IFS_16B),
+                A64RegOper((rn + 3) % 32, va, oflags=IFS_16B),
+                A64RegOper(rm, va, oflags=regsize),
             ) 
     else:
         return p_undef(opval, va)
@@ -5816,6 +5953,7 @@ def p_simd_zip_uzp_trn(opval, va):
     opc = opval >> 12 & 0x7
     rn = opval >> 5 & 0x1f
     rd = opval & 0x1f
+    sizeq = size + q
 
     opcode, mnem = zip_uzp_trn_table[opc]
     if opcode != IENC_UNDEF:
@@ -5869,9 +6007,9 @@ def p_simd_ext(opval, va):
             size = 16
             index = imm4
         olist = (
-            A64RegOper(rd, va, oflag=regsize),
-            A64RegOper(rn, va, oflag=regsize),
-            A64RegOper(rm, va, oflag=regsize),
+            A64RegOper(rd, va, oflags=regsize),
+            A64RegOper(rn, va, oflags=regsize),
+            A64RegOper(rm, va, oflags=regsize),
             A64ImmOper(index, va=va),
         )
         return INS_EXT, 'ext', olist, 0, 0
@@ -6297,7 +6435,7 @@ def p_simd_scalar_pairwise(opval, va):
                 width_spec2 = 'RESERVED'
             olist = (
                 A64RegOper(rd, va, size=width_spec),
-                A64RegOper(rn, va, oflag=width_spec2),
+                A64RegOper(rn, va, oflags=width_spec2),
             )
         else:
             return p_undef(opval, va)
@@ -6620,7 +6758,7 @@ def p_simd_scalar_shift_imm(opval, va):
             shift = 'RESERVED'
         olist = (
             A64RegOper(rd, va, size=width_spec),
-            A64RegOper(rn, va, oflag=width_spec2),
+            A64RegOper(rn, va, oflags=width_spec2),
             #FIXME shift specified above
         )
         mnem = 'shr'
@@ -6827,6 +6965,7 @@ ienc_parsers_tmp[IENC_BRANCH_UNCOND_IMM] = p_branch_uncond_imm
 ienc_parsers_tmp[IENC_BRANCH_COND_IMM] = p_branch_cond_imm
 ienc_parsers_tmp[IENC_EXCP_GEN] = p_excp_gen
 ienc_parsers_tmp[IENC_SYS] = p_sys
+ienc_parsers_tmp[IENC_SME] = p_sme
 ienc_parsers_tmp[IENC_TEST_BRANCH_IMM] = p_test_branch_imm
 ienc_parsers_tmp[IENC_BRANCH_UNCOND_REG] = p_branch_uncond_reg
 ienc_parsers_tmp[IENC_LOAD_REG_LIT] = p_load_reg_lit
@@ -6899,7 +7038,7 @@ class A64Operand(envi.Operand):
 
 class A64RegOper(A64Operand, envi.RegisterOper):
     '''
-    Subclass of A64Operand. X-bit Register operand class
+    Subclass of A64Operand. X-bit Register operand class (including Zero-Reg)
     '''
     def __init__(self, reg, va=0, oflags=0, size=8):
         if reg == None:
@@ -6908,6 +7047,9 @@ class A64RegOper(A64Operand, envi.RegisterOper):
                     bytez='f00!', va=va)
 
         self.va = va
+        if size != 8:
+            reg |= ((8*size) << 16)
+
         self.reg = reg
         self.oflags = oflags
         self.size = size
@@ -6933,6 +7075,18 @@ class A64RegOper(A64Operand, envi.RegisterOper):
             mcanv.addNameText(name, name=rname, typename="registers")
 
 
+class A64RegWithZROper(A64RegOper):
+    '''
+    Subclass of A64Operand. X-bit Register operand class
+    '''
+    def __init__(self, reg, va=0, oflags=0, size=8):
+        if reg == 31:
+            # make this SP
+            reg = REG_ZR
+
+        A64RegOper.__init__(self, reg, va, oflags, size)
+
+
 def addrToName(mcanv, va):
     sym = mcanv.syms.getSymByAddr(va)
     if sym is not None:
@@ -6953,7 +7107,7 @@ class A64ImmOper(A64Operand, envi.ImmedOper):
     def repr(self, op):
         ival = self.getOperValue(op)
         if ival > 4096:
-            return "0x%.8x" % ival
+            return "#0x%.8x" % ival
         return str(ival)
 
     def getOperValue(self, op, emu=None):
@@ -6974,18 +7128,18 @@ class A64ImmOper(A64Operand, envi.ImmedOper):
 
         else:
             if value >= 4096:
-                mcanv.addNameText('0x%.8x' % value)
+                mcanv.addNameText('#0x%.8x' % value)
             else:
-                mcanv.addNameText(str(value))
+                mcanv.addNameText('#' + str(value))
 
 
 
-LDST_MODE_POSTIDX = 0
-LDST_MODE_PREIDX = 1
-LDST_MODE_UNSIGNED = 2
+LDST_MODE_POSTIDX = 1
+LDST_MODE_OFFSET = 2
+LDST_MODE_PREIDX = 3
 
 class A64DerefOperand(A64Operand, envi.DerefOper):
-    def __init__(self, tsize=8, mode=LDST_MODE_POSTIDX, va=0):
+    def __init__(self, tsize=8, mode=LDST_MODE_OFFSET, va=0):
         A64Operand.__init__(self)
         envi.DerefOper.__init__(self)
         self.tsize = tsize
@@ -7010,8 +7164,12 @@ class A64RegImmOffOper(A64DerefOperand):
     '''
     Register + Immediate Offset     [Xn, #simm]
     '''
-    def __init__(self, basereg, simm, tsize=8, mode=LDST_MODE_POSTIDX, va=0):
+    def __init__(self, basereg, simm, tsize=8, mode=LDST_MODE_OFFSET, va=0):
         A64DerefOperand.__init__(self, tsize, mode, va)
+        if basereg == 31:
+            # make this SP
+            basereg = REG_SP
+
         self.basereg = basereg
         self.simm = simm
 
@@ -7020,18 +7178,45 @@ class A64RegImmOffOper(A64DerefOperand):
         hint = mcanv.syms.getSymHint(op.va, idx)
         mcanv.addText('[')
         mcanv.addNameText(rname, typename='registers')
-        if self.simm != 0:
+
+        if self.simm != 0 and self.mode != LDST_MODE_POSTIDX:
             mcanv.addText(', ')
             if hint is not None:
-                mcanv.addVaText(hint, self.shimm)
+                mcanv.addVaText(hint, self.simm)
             else:
-                mcanv.addNameText("#0x%x" % self.simm)
+                mcanv.addNameText("#" + hex(self.simm))
 
         mcanv.addText(']')
 
+        if self.mode == LDST_MODE_PREIDX:
+            mcanv.addText('!')
+
+        elif self.mode == LDST_MODE_POSTIDX and self.simm:
+            mcanv.addText(', ')
+            if hint is not None:
+                mcanv.addVaText(hint, self.simm)
+            else:
+                mcanv.addNameText("#" + hex(self.simm))
+
+
     def repr(self, op):
         rname = rctx.getRegisterName(self.basereg)
-        out = [ '[', rname, ', ', "#0x%x" % self.simm, ']' ]
+        out = ['[', rname]
+
+        if self.simm != 0 and self.mode != LDST_MODE_POSTIDX:
+            out.append(', ')
+            out.append("#" + hex(self.simm))
+
+        out.append(']')
+
+        if self.mode == LDST_MODE_PREIDX:
+            out.append('!')
+
+
+        elif self.mode == LDST_MODE_POSTIDX and self.simm:
+            out.append(', ')
+            out.append("#" + hex(self.simm))
+
         return "".join(out)
 
     def getOperAddr(self, op, emu=None):
@@ -7049,8 +7234,12 @@ class A64RegRegOffOper(A64DerefOperand):
     '''
     Register + Offset Register     [Xn, Xm{, extend {amount}}]
     '''
-    def __init__(self, basereg, offreg, tsize=8, mode=LDST_MODE_POSTIDX, va=0):
+    def __init__(self, basereg, offreg, tsize=8, mode=LDST_MODE_OFFSET, va=0):
         A64DerefOperand.__init__(self, tsize, mode, va)
+        if basereg == 31:
+            # make this SP
+            basereg = REG_SP
+
         self.basereg = basereg
         self.offreg = offreg
 
@@ -7141,6 +7330,54 @@ class A64ExtendOper(A64Operand):
             self.shval = shval
         else:
             self.shval = 0
+
+class A64BranchOper(A64Operand):
+    '''
+    PC + imm_offset
+
+    A64ImmOper but for Branches, not a dereference.
+    '''
+    def __init__(self, val, va):
+        self.val = val
+        self.va = va
+
+    def __eq__(self, oper):
+        if not isinstance(oper, self.__class__):
+            return False
+        if self.val != oper.val:
+            return False
+        if self.va != oper.va:
+            return False
+        return True
+
+    def involvesPC(self):
+        return True
+
+    def isImmed(self):
+        return True
+
+    def isDeref(self):
+        return False
+
+    def isDiscrete(self):
+        return True
+
+    def getOperValue(self, op, emu=None, codeflow=False):
+        return self.va + self.val
+
+    def render(self, mcanv, op, idx):
+        value = self.getOperValue(op)
+        va = value & -2
+        if mcanv.mem.isValidPointer(va):
+            name = addrToName(mcanv, va)
+            mcanv.addVaText(name, va)
+        else:
+            mcanv.addVaText('0x%.8x' % va, va)
+
+    def repr(self, op):
+        targ = self.getOperValue(op)
+        tname = "0x%.8x" % targ
+        return tname
 
 
 class A64Opcode(envi.Opcode):
@@ -7269,16 +7506,15 @@ class A64Disasm:
         ''' 
         opbytes = bytez[offset:offset+4]
         opval, = struct.unpack(self.fmt, opbytes)
+        #print("opval: %.8x" % opval)
 
         cond = 0
 
         opcode, mnem, olist, flags, simdflags = self.doDecode(va, opval, bytez, offset)
 
         if mnem == None or type(mnem) == int:
-            raise Exception("mnem == %r!  0x%x" % (mnem, opval))
-
-        #FIXME insert some stuff in here. Check out ArmV7 for better idea. Flag modification
-
+            raise envi.InvalidInstruction(mesg="mnem == %r!  0x%x" % (mnem, opval),
+                    bytez=bytez[offset:offset+4], va=va)
 
         op = A64Opcode(va, opcode, mnem, cond, 4, olist, flags, simdflags)
         return op
@@ -7298,6 +7534,7 @@ class A64Disasm:
                 if (opval & mask) == val:
                     enc = penc
                     #print("- found: %r" % enc)
+                    print("penc", penc, iencs[penc])
                     break
 
         # If we don't know the encoding by here, we never will ;)
@@ -7360,6 +7597,6 @@ if __name__=="__main__":
     #for i in instrs:
     #    op = AArch64Disasm().disasm(i[1], 0, 0)
     #    print(op)
-    op = A64Disasm().disasm('54abcdef'.decode('hex'), 0, 0)
+    op = A64Disasm().disasm(unhexlify('54abcdef'), 0, 0)
     print(op)
     
