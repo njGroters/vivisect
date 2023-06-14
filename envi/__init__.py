@@ -239,7 +239,7 @@ arch_defs = {
     ARCH_MIPS32:    {
         'name':     'mips32',
         'aliases':  ('mips',),
-        'modpath':  ('envi', 'archs', 'mips32'),
+        'modpath':  ('envi', 'archs', 'mips'),
         'clsname':  'Mips32Module',
         'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
                     'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
