@@ -107,7 +107,6 @@ arch_defs = {
         'aliases':  ('aarch64',),
         'modpath':  ('envi', 'archs', 'aarch64'),
         'clsname':  'A64Module',
-        'disabled': True,
         'maturity': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE,
                     'unittests': {'disasm': MAT_NONE, 'emu': MAT_NONE, 'symboliks': MAT_NONE} },
         },
