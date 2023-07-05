@@ -74,6 +74,16 @@ def initMemSendtoMenu(vw, xexpr, xmenu):
     e_q_memcanvas.initMemSendtoMenu(xexpr, xmenu)
     submenu = xmenu.addMenu('sendto: <new>')
     submenu.addAction('Memory View', ACT(newMemoryView, vw, xexpr))
+
+    # check if it's code
+    tgt = vw.parseExpression(xexpr)
+    if tgt is None:
+        return
+    
+    loc = vw.getLocation(tgt)
+    if loc is None or loc[L_LTYPE] != LOC_OP:
+        return
+
     submenu.addAction('FuncGraph View', ACT(newFuncGraph, vw, xexpr))
 
 def buildContextMenu(vw, va=None, expr=None, menu=None, parent=None, nav=None):
