@@ -30,7 +30,7 @@ def dbg_interact(lcls, gbls, intro=None):
 
     print(intro)
     try:
-        from IPython import embed
+        from IPython.terminal.embed import embed
         shelltype = STYPE_IPYTHON_NEW
 
     except ImportError as e:
